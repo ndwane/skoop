@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node *)",
+      "PowerShell($env:ANTHROPIC_API_KEY)",
+      "Bash(npm install *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(Remove-Item C:\\\\Users\\\\ndwan\\\\skoop\\\\.env)",
+      "PowerShell(Remove-Item *)",
+      "Bash(git push *)"
+    ]
+  }
+}

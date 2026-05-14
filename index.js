@@ -13,14 +13,16 @@ app.use((req, res, next) => {
 
 const RAPID_API_KEY = 'ae797cb768msh2307aedcbc3f711p182834jsn16417a8a0cb7';
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
 const cityMap = {
   'دبي': 'dubai',
-  'أبوظبي': 'abu-dhabi',
+  'أبوظبي': 'abudhabi',
   'الشارقة': 'sharjah',
   'عجمان': 'ajman',
-  'رأس الخيمة': 'ras-al-khaimah',
+  'رأس الخيمة': 'rak',
   'الفجيرة': 'fujairah',
-  'أم القيوين': 'umm-al-quwain',
+  'أم القيوين': 'uaq',
+  'العين': 'alain',
 };
 
 const carNameMap = {
@@ -75,17 +77,21 @@ app.get('/search', async (req, res) => {
   if (!q) return res.json([]);
 
   try {
-    const engCity = city ? cityMap[city] : null;
-    let searchUrl = 'https://uae.dubizzle.com/motors/used-cars/';
-    if (engCity) searchUrl += engCity + '/';
-    searchUrl += '?q=' + encodeURIComponent(carNameMap[q] || q);
+    const searchKeyword = carNameMap[q] || q;
+    const locationParam = city ? (cityMap[city] || 'uae') : 'uae';
 
-    const response = await axios.post(
-      'https://dubizzle-api.p.rapidapi.com/scrapers/api/dubizzle/product/listing-by-url',
-      { url: searchUrl },
+    console.log(`[search] keyword=${searchKeyword} location=${locationParam}`);
+
+    const response = await axios.get(
+      'https://dubizzle-api.p.rapidapi.com/scrapers/api/dubizzle/product/search',
       {
+        params: {
+          keyword: searchKeyword,
+          sort_by: 'relevance',
+          page: '1',
+          location: locationParam
+        },
         headers: {
-          'Content-Type': 'application/json',
           'x-rapidapi-host': 'dubizzle-api.p.rapidapi.com',
           'x-rapidapi-key': RAPID_API_KEY
         },
@@ -93,7 +99,7 @@ app.get('/search', async (req, res) => {
       }
     );
 
-    const rawData = response.data?.data || response.data || [];
+    const rawData = response.data?.data || response.data?.results || response.data || [];
 
     let cars = rawData.map(car => {
       const nameText = car.name?.en || car.name || '';
@@ -112,12 +118,6 @@ app.get('/search', async (req, res) => {
       };
     });
 
-    const engName = carNameMap[q] || q.toLowerCase();
-    cars = cars.filter(c => {
-      const nameLower = c.name?.toLowerCase() || '';
-      return nameLower.includes(q.toLowerCase()) || nameLower.includes(engName);
-    });
-
     if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
     if (maxPrice) cars = cars.filter(c => c.price <= parseInt(maxPrice));
     if (yearFrom) cars = cars.filter(c => c.year && c.year >= parseInt(yearFrom));
@@ -125,6 +125,7 @@ app.get('/search', async (req, res) => {
     if (kmFrom) cars = cars.filter(c => c.km && c.km >= parseInt(kmFrom));
     if (kmTo) cars = cars.filter(c => c.km && c.km <= parseInt(kmTo));
 
+    console.log(`[search] found ${cars.length} cars`);
     res.json(cars);
   } catch (error) {
     console.log('Search error:', error.message);
