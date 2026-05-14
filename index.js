@@ -1,6 +1,6 @@
 const express = require('express');
 const axios = require('axios');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Anthropic = require('@anthropic-ai/sdk');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -11,7 +11,7 @@ app.use((req, res, next) => {
 });
 
 const RAPID_API_KEY = 'ae797cb768msh2307aedcbc3f711p182834jsn16417a8a0cb7';
-const genAI = new GoogleGenerativeAI('AIzaSyAooCPLFPAuWYkGM5F0Z5e--PmYdxkgJbs');
+const client = new Anthropic({ apiKey: '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' });
 
 const cityMap = {
   'دبي': 'dubai',
@@ -48,13 +48,28 @@ const carNameMap = {
 
 async function evaluatePrice(carName, price) {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    const result = await model.generateContent(
-      'Car: ' + carName + ', Price: ' + price + ' AED. cheap or reasonable or expensive? one word only in Arabic.'
-    );
-    return result.response.text().trim();
+    const message = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 200,
+      messages: [
+        {
+          role: 'user',
+          content: `أنت خبير سيارات في الإمارات. حلل هذه السيارة:
+السيارة: ${carName}
+السعر: ${price} درهم
+
+أعطني تحليل قصير جداً (جملة واحدة أو جملتين) يشمل:
+- هل السعر رخيص أو معقول أو غالي مقارنة بالسوق
+- سبب واحد للشراء أو التحذير
+
+الرد بالعربي فقط، قصير ومباشر.`
+        }
+      ]
+    });
+    return message.content[0].text.trim();
   } catch (error) {
-    return 'معقول';
+    console.log('Claude error:', error.message);
+    return 'سعر معقول للسوق الإماراتي';
   }
 }
 
@@ -64,12 +79,9 @@ app.get('/search', async (req, res) => {
   if (!q) return res.json([]);
 
   try {
-    // بناء الـ URL مع المدينة
     const engCity = city ? cityMap[city] : null;
     let searchUrl = 'https://uae.dubizzle.com/motors/used-cars/';
-    if (engCity) {
-      searchUrl += engCity + '/';
-    }
+    if (engCity) searchUrl += engCity + '/';
     searchUrl += '?q=' + encodeURIComponent(carNameMap[q] || q);
 
     const response = await axios.post(
@@ -104,7 +116,6 @@ app.get('/search', async (req, res) => {
       };
     });
 
-    // فلتر الاسم
     const engName = carNameMap[q] || q.toLowerCase();
     cars = cars.filter(c => {
       const nameLower = c.name?.toLowerCase() || '';
@@ -131,7 +142,7 @@ app.get('/evaluate', async (req, res) => {
     const evaluation = await evaluatePrice(name, price);
     res.json({ evaluation });
   } catch (error) {
-    res.json({ evaluation: 'معقول' });
+    res.json({ evaluation: 'سعر معقول للسوق الإماراتي' });
   }
 });
 
