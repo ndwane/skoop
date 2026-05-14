@@ -13,6 +13,16 @@ app.use((req, res, next) => {
 const RAPID_API_KEY = 'ae797cb768msh2307aedcbc3f711p182834jsn16417a8a0cb7';
 const genAI = new GoogleGenerativeAI('AIzaSyAooCPLFPAuWYkGM5F0Z5e--PmYdxkgJbs');
 
+const cityMap = {
+  'دبي': 'Dubai',
+  'أبوظبي': 'Abu Dhabi',
+  'الشارقة': 'Sharjah',
+  'عجمان': 'Ajman',
+  'رأس الخيمة': 'Ras Al Khaimah',
+  'الفجيرة': 'Fujairah',
+  'أم القيوين': 'Umm Al Quwain',
+};
+
 async function evaluatePrice(carName, price) {
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
@@ -27,17 +37,16 @@ async function evaluatePrice(carName, price) {
 
 app.get('/search', async (req, res) => {
   const { q, minPrice, maxPrice, city, yearFrom, yearTo, kmFrom, kmTo } = req.query;
-  
-  if (!q) {
-    return res.json([]);
-  }
+
+  if (!q) return res.json([]);
 
   try {
     const response = await axios.post(
-  'https://dubizzle-api.p.rapidapi.com/scrapers/api/dubizzle/product/listing-by-url',
-  { url: 'https://uae.dubizzle.com/motors/used-cars/?q=' + encodeURIComponent(q) },
-  {
+      'https://dubizzle-api.p.rapidapi.com/scrapers/api/dubizzle/product/listing-by-url',
+      { url: 'https://uae.dubizzle.com/motors/used-cars/?q=' + encodeURIComponent(q) },
+      {
         headers: {
+          'Content-Type': 'application/json',
           'x-rapidapi-host': 'dubizzle-api.p.rapidapi.com',
           'x-rapidapi-key': RAPID_API_KEY
         },
@@ -46,7 +55,7 @@ app.get('/search', async (req, res) => {
     );
 
     const rawData = response.data?.data || response.data || [];
-    
+
     let cars = rawData.map(car => {
       const nameText = car.name?.en || car.name || '';
       const yearMatch = nameText.match(/\b(19|20)\d{2}\b/);
@@ -66,7 +75,10 @@ app.get('/search', async (req, res) => {
 
     if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
     if (maxPrice) cars = cars.filter(c => c.price <= parseInt(maxPrice));
-    if (city) cars = cars.filter(c => c.city?.toLowerCase().includes(city.toLowerCase()));
+    if (city) {
+      const engCity = cityMap[city] || city;
+      cars = cars.filter(c => c.city?.toLowerCase().includes(engCity.toLowerCase()));
+    }
     if (yearFrom) cars = cars.filter(c => c.year && c.year >= parseInt(yearFrom));
     if (yearTo) cars = cars.filter(c => c.year && c.year <= parseInt(yearTo));
     if (kmFrom) cars = cars.filter(c => c.km && c.km >= parseInt(kmFrom));
