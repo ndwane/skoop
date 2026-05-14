@@ -23,6 +23,29 @@ const cityMap = {
   'أم القيوين': 'Umm Al Quwain',
 };
 
+const carNameMap = {
+  'نيسان': 'nissan',
+  'تويوتا': 'toyota',
+  'هوندا': 'honda',
+  'مرسيدس': 'mercedes',
+  'بي ام دبليو': 'bmw',
+  'لكزس': 'lexus',
+  'كيا': 'kia',
+  'هيونداي': 'hyundai',
+  'فورد': 'ford',
+  'شيفروليه': 'chevrolet',
+  'جيب': 'jeep',
+  'رنج روفر': 'range rover',
+  'لاند روفر': 'land rover',
+  'بورش': 'porsche',
+  'اودي': 'audi',
+  'فولكس': 'volkswagen',
+  'ميتسوبيشي': 'mitsubishi',
+  'سوزوكي': 'suzuki',
+  'مازدا': 'mazda',
+  'انفينيتي': 'infiniti',
+};
+
 async function evaluatePrice(carName, price) {
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
@@ -71,6 +94,14 @@ app.get('/search', async (req, res) => {
         image: car.photos?.thumb || '',
         evaluation: null,
       };
+    });
+
+    // فلتر الاسم
+    const qLower = q.toLowerCase();
+    const engName = carNameMap[q] || qLower;
+    cars = cars.filter(c => {
+      const nameLower = c.name?.toLowerCase() || '';
+      return nameLower.includes(qLower) || nameLower.includes(engName);
     });
 
     if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
