@@ -14,13 +14,13 @@ const RAPID_API_KEY = 'ae797cb768msh2307aedcbc3f711p182834jsn16417a8a0cb7';
 const genAI = new GoogleGenerativeAI('AIzaSyAooCPLFPAuWYkGM5F0Z5e--PmYdxkgJbs');
 
 const cityMap = {
-  'دبي': 'Dubai',
-  'أبوظبي': 'Abu Dhabi',
-  'الشارقة': 'Sharjah',
-  'عجمان': 'Ajman',
-  'رأس الخيمة': 'Ras Al Khaimah',
-  'الفجيرة': 'Fujairah',
-  'أم القيوين': 'Umm Al Quwain',
+  'دبي': 'dubai',
+  'أبوظبي': 'abu-dhabi',
+  'الشارقة': 'sharjah',
+  'عجمان': 'ajman',
+  'رأس الخيمة': 'ras-al-khaimah',
+  'الفجيرة': 'fujairah',
+  'أم القيوين': 'umm-al-quwain',
 };
 
 const carNameMap = {
@@ -64,9 +64,17 @@ app.get('/search', async (req, res) => {
   if (!q) return res.json([]);
 
   try {
+    // بناء الـ URL مع المدينة
+    const engCity = city ? cityMap[city] : null;
+    let searchUrl = 'https://uae.dubizzle.com/motors/used-cars/';
+    if (engCity) {
+      searchUrl += engCity + '/';
+    }
+    searchUrl += '?q=' + encodeURIComponent(carNameMap[q] || q);
+
     const response = await axios.post(
       'https://dubizzle-api.p.rapidapi.com/scrapers/api/dubizzle/product/listing-by-url',
-      { url: 'https://uae.dubizzle.com/motors/used-cars/?q=' + encodeURIComponent(q) },
+      { url: searchUrl },
       {
         headers: {
           'Content-Type': 'application/json',
@@ -97,19 +105,14 @@ app.get('/search', async (req, res) => {
     });
 
     // فلتر الاسم
-    const qLower = q.toLowerCase();
-    const engName = carNameMap[q] || qLower;
+    const engName = carNameMap[q] || q.toLowerCase();
     cars = cars.filter(c => {
       const nameLower = c.name?.toLowerCase() || '';
-      return nameLower.includes(qLower) || nameLower.includes(engName);
+      return nameLower.includes(q.toLowerCase()) || nameLower.includes(engName);
     });
 
     if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
     if (maxPrice) cars = cars.filter(c => c.price <= parseInt(maxPrice));
-    if (city) {
-      const engCity = cityMap[city] || city;
-      cars = cars.filter(c => c.city?.toLowerCase().includes(engCity.toLowerCase()));
-    }
     if (yearFrom) cars = cars.filter(c => c.year && c.year >= parseInt(yearFrom));
     if (yearTo) cars = cars.filter(c => c.year && c.year <= parseInt(yearTo));
     if (kmFrom) cars = cars.filter(c => c.km && c.km >= parseInt(kmFrom));
