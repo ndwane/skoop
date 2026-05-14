@@ -11,8 +11,7 @@ app.use((req, res, next) => {
 });
 
 const RAPID_API_KEY = 'ae797cb768msh2307aedcbc3f711p182834jsn16417a8a0cb7';
-const client = new Anthropic({ apiKey: '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' });
-
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const cityMap = {
   'دبي': 'dubai',
   'أبوظبي': 'abu-dhabi',
