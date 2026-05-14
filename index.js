@@ -15,20 +15,20 @@ const RAPID_API_KEY = 'ae797cb768msh2307aedcbc3f711p182834jsn16417a8a0cb7';
 const genAI = new GoogleGenerativeAI('AIzaSyAooCPLFPAuWYkGM5F0Z5e--PmYdxkgJbs');
 
 const cityMap = {
-  'دبي': 'Dubai',
-  'أبوظبي': 'Abu Dhabi',
-  'الشارقة': 'Sharjah',
-  'عجمان': 'Ajman',
-  'رأس الخيمة': 'Ras Al Khaimah',
-  'الفجيرة': 'Fujairah',
-  'أم القيوين': 'Umm Al Quwain',
+  'Dubai': 'Dubai',
+  'Abu Dhabi': 'Abu Dhabi',
+  'Sharjah': 'Sharjah',
+  'Ajman': 'Ajman',
+  'Ras Al Khaimah': 'Ras Al Khaimah',
+  'Fujairah': 'Fujairah',
+  'Umm Al Quwain': 'Umm Al Quwain',
 };
 
 async function evaluatePrice(carName, price) {
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     const result = await model.generateContent(
-      'سيارة: ' + carName + ', السعر: ' + price + ' درهم. رخيص أو معقول أو غالي؟ كلمة واحدة فقط.'
+      'Car: ' + carName + ', Price: ' + price + ' AED. cheap or reasonable or expensive? one word only in Arabic.'
     );
     return result.response.text().trim();
   } catch (error) {
@@ -39,22 +39,23 @@ async function evaluatePrice(carName, price) {
 app.get('/search', async (req, res) => {
   const { q, minPrice, maxPrice, city, yearFrom, yearTo, kmFrom, kmTo } = req.query;
   try {
-    const response = await axios.post('https://dubizzle-api.p.rapidapi.com/scrapers/api/dubizzle/product/listing-by-url', {
-      url: 'https://uae.dubizzle.com/motors/used-cars/?q=' + encodeURIComponent(q)
-    }, {
-      headers: {
-        'Content-Type': 'application/json',
-        'x-rapidapi-host': 'dubizzle-api.p.rapidapi.com',
-        'x-rapidapi-key': RAPID_API_KEY
-      },
-      timeout: 60000
-    });
+    const response = await axios.post(
+      'https://dubizzle-api.p.rapidapi.com/scrapers/api/dubizzle/product/listing-by-url',
+      { url: 'https://uae.dubizzle.com/motors/used-cars/?q=' + encodeURIComponent(q) },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-rapidapi-host': 'dubizzle-api.p.rapidapi.com',
+          'x-rapidapi-key': RAPID_API_KEY
+        },
+        timeout: 60000
+      }
+    );
 
     let cars = response.data.data.map(car => {
       const nameText = car.name?.en || '';
       const yearMatch = nameText.match(/\b(19|20)\d{2}\b/);
       const year = yearMatch ? parseInt(yearMatch[0]) : null;
-
       return {
         name: nameText,
         price: car.price,
@@ -70,9 +71,8 @@ app.get('/search', async (req, res) => {
 
     if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
     if (maxPrice) cars = cars.filter(c => c.price <= parseInt(maxPrice));
-    if (city && city !== 'الكل') {
-      const engCity = cityMap[city] || city;
-      cars = cars.filter(c => c.city?.toLowerCase().includes(engCity.toLowerCase()));
+    if (city) {
+      cars = cars.filter(c => c.city?.toLowerCase().includes(city.toLowerCase()));
     }
     if (yearFrom) cars = cars.filter(c => c.year && c.year >= parseInt(yearFrom));
     if (yearTo) cars = cars.filter(c => c.year && c.year <= parseInt(yearTo));
@@ -92,5 +92,5 @@ app.get('/evaluate', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log('سكوب API شغّال على المنفذ ' + PORT + ' 🚀');
+  console.log('Skoop API running on port ' + PORT + ' 🚀');
 });
