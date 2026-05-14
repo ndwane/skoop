@@ -2,7 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use((req, res, next) => {
@@ -13,6 +13,16 @@ app.use((req, res, next) => {
 
 const RAPID_API_KEY = 'ae797cb768msh2307aedcbc3f711p182834jsn16417a8a0cb7';
 const genAI = new GoogleGenerativeAI('AIzaSyAooCPLFPAuWYkGM5F0Z5e--PmYdxkgJbs');
+
+const cityMap = {
+  'دبي': 'Dubai',
+  'أبوظبي': 'Abu Dhabi',
+  'الشارقة': 'Sharjah',
+  'عجمان': 'Ajman',
+  'رأس الخيمة': 'Ras Al Khaimah',
+  'الفجيرة': 'Fujairah',
+  'أم القيوين': 'Umm Al Quwain',
+};
 
 async function evaluatePrice(carName, price) {
   try {
@@ -27,11 +37,10 @@ async function evaluatePrice(carName, price) {
 }
 
 app.get('/search', async (req, res) => {
-  const query = req.query.q;
-  
+  const { q, minPrice, maxPrice, city, yearFrom, yearTo, kmFrom, kmTo } = req.query;
   try {
     const response = await axios.post('https://dubizzle-api.p.rapidapi.com/scrapers/api/dubizzle/product/listing-by-url', {
-      url: 'https://uae.dubizzle.com/motors/used-cars/?q=' + encodeURIComponent(query)
+      url: 'https://uae.dubizzle.com/motors/used-cars/?q=' + encodeURIComponent(q)
     }, {
       headers: {
         'Content-Type': 'application/json',
@@ -41,17 +50,36 @@ app.get('/search', async (req, res) => {
       timeout: 60000
     });
 
-    const cars = response.data.data.map(car => ({
-      name: car.name?.en,
-      price: car.price,
-      city: car.site?.en,
-      link: car.absolute_url?.en,
-      image: car.photos?.thumb,
-      evaluation: null
-    }));
+    let cars = response.data.data.map(car => {
+      const nameText = car.name?.en || '';
+      const yearMatch = nameText.match(/\b(19|20)\d{2}\b/);
+      const year = yearMatch ? parseInt(yearMatch[0]) : null;
+
+      return {
+        name: nameText,
+        price: car.price,
+        city: car.city || '',
+        year: year,
+        km: car.kilometers || car.mileage || null,
+        color: car.color || '',
+        link: car.absolute_url?.en,
+        image: car.photos?.thumb,
+        evaluation: null,
+      };
+    });
+
+    if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
+    if (maxPrice) cars = cars.filter(c => c.price <= parseInt(maxPrice));
+    if (city && city !== 'الكل') {
+      const engCity = cityMap[city] || city;
+      cars = cars.filter(c => c.city?.toLowerCase().includes(engCity.toLowerCase()));
+    }
+    if (yearFrom) cars = cars.filter(c => c.year && c.year >= parseInt(yearFrom));
+    if (yearTo) cars = cars.filter(c => c.year && c.year <= parseInt(yearTo));
+    if (kmFrom) cars = cars.filter(c => c.km && c.km >= parseInt(kmFrom));
+    if (kmTo) cars = cars.filter(c => c.km && c.km <= parseInt(kmTo));
 
     res.json(cars);
-
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
