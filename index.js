@@ -47,14 +47,14 @@ const carNameMap = {
 };
 
 async function evaluatePrice(carName, price) {
-  try {
-    const message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 200,
-      messages: [
-        {
-          role: 'user',
-          content: `أنت خبير سيارات في الإمارات. حلل هذه السيارة:
+  console.log(`[evaluate] carName=${carName} price=${price} apiKeySet=${!!process.env.ANTHROPIC_API_KEY}`);
+  const message = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 200,
+    messages: [
+      {
+        role: 'user',
+        content: `أنت خبير سيارات في الإمارات. حلل هذه السيارة:
 السيارة: ${carName}
 السعر: ${price} درهم
 
@@ -63,14 +63,10 @@ async function evaluatePrice(carName, price) {
 - سبب واحد للشراء أو التحذير
 
 الرد بالعربي فقط، قصير ومباشر.`
-        }
-      ]
-    });
-    return message.content[0].text.trim();
-  } catch (error) {
-    console.log('Claude error:', error.message);
-    return 'سعر معقول للسوق الإماراتي';
-  }
+      }
+    ]
+  });
+  return message.content[0].text.trim();
 }
 
 app.get('/search', async (req, res) => {
@@ -137,12 +133,13 @@ app.get('/search', async (req, res) => {
 });
 
 app.get('/evaluate', async (req, res) => {
+  const { name, price } = req.query;
   try {
-    const { name, price } = req.query;
     const evaluation = await evaluatePrice(name, price);
     res.json({ evaluation });
   } catch (error) {
-    res.json({ evaluation: 'سعر معقول للسوق الإماراتي' });
+    console.error('[evaluate] Claude API error:', error.status, error.message, error.error);
+    res.status(500).json({ error: error.message, evaluation: 'سعر معقول للسوق الإماراتي' });
   }
 });
 
