@@ -33,12 +33,10 @@ app.get('/search', async (req, res) => {
   }
 
   try {
-    const response = await axios.get(
-      'https://dubizzle-api.p.rapidapi.com/scrapers/api/dubizzle/product/listing-by-url',
-      {
-        params: {
-          url: 'https://uae.dubizzle.com/motors/used-cars/?q=' + encodeURIComponent(q)
-        },
+    const response = await axios.post(
+  'https://dubizzle-api.p.rapidapi.com/scrapers/api/dubizzle/product/listing-by-url',
+  { url: 'https://uae.dubizzle.com/motors/used-cars/?q=' + encodeURIComponent(q) },
+  {
         headers: {
           'x-rapidapi-host': 'dubizzle-api.p.rapidapi.com',
           'x-rapidapi-key': RAPID_API_KEY
