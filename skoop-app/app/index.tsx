@@ -59,9 +59,10 @@ export default function Index() {
 
       const response = await fetch(API_URL + '/search?' + params.toString());
       const data = await response.json();
-      setCars(data);
+      const results = Array.isArray(data) ? data : [];
+      setCars(results);
 
-      data.forEach(async (car, index) => {
+      results.forEach(async (car, index) => {
         if (car.price) {
           try {
             const evalResponse = await fetch(
