@@ -25,6 +25,17 @@ const cityMap = {
   'العين': 'alain',
 };
 
+const cityDomainMap = {
+  'دبي': 'dubai',
+  'أبوظبي': 'abudhabi',
+  'الشارقة': 'sharjah',
+  'عجمان': 'ajman',
+  'رأس الخيمة': 'ras-al-khaimah',
+  'الفجيرة': 'fujairah',
+  'أم القيوين': 'umm-al-quwain',
+  'العين': 'al-ain',
+};
+
 const carNameMap = {
   'نيسان': 'nissan',
   'تويوتا': 'toyota',
@@ -78,20 +89,17 @@ app.get('/search', async (req, res) => {
 
   try {
     const searchKeyword = carNameMap[q] || q;
-    const locationParam = city ? (cityMap[city] || 'uae') : 'uae';
+    const cityDomain = city ? (cityDomainMap[city] || 'dubai') : 'dubai';
+    const searchUrl = `https://${cityDomain}.dubizzle.com/motors/used-cars/?q=${encodeURIComponent(searchKeyword)}`;
 
-    console.log(`[search] keyword=${searchKeyword} location=${locationParam}`);
+    console.log(`[search] url=${searchUrl}`);
 
-    const response = await axios.get(
-      'https://dubizzle-api.p.rapidapi.com/scrapers/api/dubizzle/product/search',
+    const response = await axios.post(
+      'https://dubizzle-api.p.rapidapi.com/scrapers/api/dubizzle/product/listing-by-url',
+      { url: searchUrl },
       {
-        params: {
-          keyword: searchKeyword,
-          sort_by: 'relevance',
-          page: '1',
-          location: locationParam
-        },
         headers: {
+          'Content-Type': 'application/json',
           'x-rapidapi-host': 'dubizzle-api.p.rapidapi.com',
           'x-rapidapi-key': RAPID_API_KEY
         },
@@ -99,7 +107,9 @@ app.get('/search', async (req, res) => {
       }
     );
 
+    console.log('API keys:', Object.keys(response.data || {}));
     const rawData = response.data?.data || response.data?.results || response.data || [];
+    console.log(`[search] raw count: ${rawData.length}`);
 
     let cars = rawData.map(car => {
       const nameText = car.name?.en || car.name || '';
@@ -119,9 +129,6 @@ app.get('/search', async (req, res) => {
       };
     });
 
-    // debug - نشوف الروابط الحقيقية
-    console.log('Sample links:', JSON.stringify(cars.slice(0, 5).map(c => c.link)));
-
     if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
     if (maxPrice) cars = cars.filter(c => c.price <= parseInt(maxPrice));
     if (yearFrom) cars = cars.filter(c => c.year && c.year >= parseInt(yearFrom));
@@ -129,7 +136,7 @@ app.get('/search', async (req, res) => {
     if (kmFrom) cars = cars.filter(c => c.km && c.km >= parseInt(kmFrom));
     if (kmTo) cars = cars.filter(c => c.km && c.km <= parseInt(kmTo));
 
-    console.log(`[search] found ${cars.length} cars`);
+    console.log(`[search] final: ${cars.length} cars`);
     res.json(cars);
   } catch (error) {
     console.log('Search error:', error.message);
