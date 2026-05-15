@@ -99,34 +99,33 @@ app.get('/search', async (req, res) => {
       }
     );
 
-    console.log('API Response keys:', Object.keys(response.data || {}));
-    console.log('API Response sample:', JSON.stringify(response.data).substring(0, 500));
-
     const rawData = response.data?.data || response.data?.results || response.data || [];
 
     let cars = rawData.map(car => {
       const nameText = car.name?.en || car.name || '';
       const yearMatch = nameText.match(/\b(19|20)\d{2}\b/);
       const year = yearMatch ? parseInt(yearMatch[0]) : null;
+      const link = car.absolute_url?.en || car.absolute_url || '';
       return {
         name: nameText,
         price: car.price || 0,
-        city: car.city || car.site?.en || '',
+        city: car.site?.en || car.city || '',
         year: year,
         km: car.kilometers || car.mileage || null,
         color: car.color || '',
-        link: car.absolute_url?.en || car.absolute_url || '',
-        image: car.photos?.thumb || '',
+        link: link,
+        image: car.photos?.thumb || car.photo_thumbnails?.[0] || '',
         evaluation: null,
       };
     });
 
-    // فلتر سيارات للبيع فقط
-    const excludeWords = ['rent', 'hire', 'service', 'transport', 'delivery', 'driver', 'movers', 'shifting', 'available for'];
+    // فلتر سيارات مستعملة للبيع فقط
     cars = cars.filter(c => {
-      const nameLower = c.name?.toLowerCase() || '';
-      return c.price > 0 && !excludeWords.some(word => nameLower.includes(word));
+      const link = c.link?.toLowerCase() || '';
+      return link.includes('/motors/used-cars/') || link.includes('/used-cars/');
     });
+
+    console.log(`[search] after filter: ${cars.length} cars`);
 
     if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
     if (maxPrice) cars = cars.filter(c => c.price <= parseInt(maxPrice));
@@ -135,7 +134,7 @@ app.get('/search', async (req, res) => {
     if (kmFrom) cars = cars.filter(c => c.km && c.km >= parseInt(kmFrom));
     if (kmTo) cars = cars.filter(c => c.km && c.km <= parseInt(kmTo));
 
-    console.log(`[search] found ${cars.length} cars`);
+    console.log(`[search] final: ${cars.length} cars`);
     res.json(cars);
   } catch (error) {
     console.log('Search error:', error.message);
