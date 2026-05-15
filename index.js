@@ -25,6 +25,74 @@ const cityDomainMap = {
   'العين': 'al-ain', 'Al Ain': 'al-ain',
 };
 
+// slug للماركة في دبيزل
+const brandSlugMap = {
+  'toyota': 'toyota',
+  'nissan': 'nissan',
+  'honda': 'honda',
+  'mercedes': 'mercedes-benz',
+  'bmw': 'bmw',
+  'lexus': 'lexus',
+  'kia': 'kia',
+  'hyundai': 'hyundai',
+  'ford': 'ford',
+  'chevrolet': 'chevrolet',
+  'jeep': 'jeep',
+  'range rover': 'land-rover',
+  'land rover': 'land-rover',
+  'porsche': 'porsche',
+  'audi': 'audi',
+  'volkswagen': 'volkswagen',
+  'mitsubishi': 'mitsubishi',
+  'suzuki': 'suzuki',
+  'mazda': 'mazda',
+  'infiniti': 'infiniti',
+  'tesla': 'tesla',
+  'lamborghini': 'lamborghini',
+  'ferrari': 'ferrari',
+  'bentley': 'bentley',
+  'rolls royce': 'rolls-royce',
+  'maserati': 'maserati',
+  'jaguar': 'jaguar',
+  'volvo': 'volvo',
+  'subaru': 'subaru',
+  'mini': 'mini',
+  'cadillac': 'cadillac',
+  'lincoln': 'lincoln',
+  'dodge': 'dodge',
+  'gmc': 'gmc',
+  'hummer': 'hummer',
+  'genesis': 'genesis',
+  'byd': 'byd',
+  'haval': 'haval',
+  'chery': 'chery',
+  'geely': 'geely',
+  'mg': 'mg',
+  'mclaren': 'mclaren',
+  'aston martin': 'aston-martin',
+  'alfa romeo': 'alfa-romeo',
+  'fiat': 'fiat',
+  'peugeot': 'peugeot',
+  'renault': 'renault',
+  'opel': 'opel',
+  'daihatsu': 'daihatsu',
+  'isuzu': 'isuzu',
+  'chrysler': 'chrysler',
+  'bugatti': 'bugatti',
+  'honda motorcycle': 'honda',
+  'yamaha motorcycle': 'yamaha',
+  'kawasaki': 'kawasaki',
+  'suzuki motorcycle': 'suzuki',
+  'ktm': 'ktm',
+  'bmw motorcycle': 'bmw',
+  'ducati': 'ducati',
+  'harley davidson': 'harley-davidson',
+  'triumph': 'triumph',
+  'indian motorcycle': 'indian',
+  'aprilia': 'aprilia',
+  'vespa': 'vespa',
+};
+
 const carNameMap = {
   'نيسان': 'nissan', 'تويوتا': 'toyota', 'هوندا': 'honda',
   'مرسيدس': 'mercedes', 'بي ام دبليو': 'bmw', 'لكزس': 'lexus',
@@ -82,15 +150,18 @@ app.get('/search', async (req, res) => {
 
   try {
     const searchKeyword = carNameMap[q] || q;
+    const brandSlug = brandSlugMap[searchKeyword.toLowerCase()] || searchKeyword.toLowerCase().replace(/ /g, '-');
     const cityDomain = city ? (cityDomainMap[city] || 'dubai') : 'dubai';
-    const baseUrl = `https://${cityDomain}.dubizzle.com/motors/used-cars/?q=${encodeURIComponent(searchKeyword)}`;
 
-    console.log(`[search] keyword=${searchKeyword} city=${cityDomain}`);
+    // URL مباشر للماركة
+    const baseUrl = `https://${cityDomain}.dubizzle.com/motors/used-cars/${brandSlug}/`;
+
+    console.log(`[search] url=${baseUrl}`);
 
     const [page1, page2, page3] = await Promise.all([
       fetchPage(baseUrl),
-      fetchPage(baseUrl + '&page=2'),
-      fetchPage(baseUrl + '&page=3'),
+      fetchPage(baseUrl + '?page=2'),
+      fetchPage(baseUrl + '?page=3'),
     ]);
 
     const rawData = [...page1, ...page2, ...page3];
@@ -127,6 +198,18 @@ app.get('/search', async (req, res) => {
       seen.add(c.link);
       return true;
     });
+
+    // فلتر موديل لو المستخدم حدد موديل معين
+    if (q && q.includes(' ')) {
+      const modelPart = searchKeyword.split(' ').slice(1).join(' ').toLowerCase();
+      if (modelPart) {
+        cars = cars.filter(c => {
+          const nameLower = c.name?.toLowerCase() || '';
+          const linkLower = c.link?.toLowerCase() || '';
+          return nameLower.includes(modelPart) || linkLower.includes(modelPart);
+        });
+      }
+    }
 
     if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
     if (maxPrice) cars = cars.filter(c => c.price <= parseInt(maxPrice));
