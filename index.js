@@ -106,7 +106,7 @@ app.get('/search', async (req, res) => {
 
     let cars = rawData.map(car => {
       const nameText = car.name?.en || car.name || '';
-      const yearMatch = nameText.match(/\b(19|20)\d{2}\d{2}\b/);
+      const yearMatch = nameText.match(/\b(19|20)\d{2}\b/);
       const year = yearMatch ? parseInt(yearMatch[0]) : null;
       return {
         name: nameText,
@@ -119,6 +119,13 @@ app.get('/search', async (req, res) => {
         image: car.photos?.thumb || '',
         evaluation: null,
       };
+    });
+
+    // فلتر سيارات للبيع فقط
+    const excludeWords = ['rent', 'hire', 'service', 'transport', 'delivery', 'driver', 'movers', 'shifting', 'available for'];
+    cars = cars.filter(c => {
+      const nameLower = c.name?.toLowerCase() || '';
+      return c.price > 0 && !excludeWords.some(word => nameLower.includes(word));
     });
 
     if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
