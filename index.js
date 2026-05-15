@@ -14,17 +14,6 @@ app.use((req, res, next) => {
 const RAPID_API_KEY = 'ae797cb768msh2307aedcbc3f711p182834jsn16417a8a0cb7';
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const cityMap = {
-  'دبي': 'dubai',
-  'أبوظبي': 'abudhabi',
-  'الشارقة': 'sharjah',
-  'عجمان': 'ajman',
-  'رأس الخيمة': 'rak',
-  'الفجيرة': 'fujairah',
-  'أم القيوين': 'uaq',
-  'العين': 'alain',
-};
-
 const cityDomainMap = {
   'دبي': 'dubai',
   'أبوظبي': 'abudhabi',
@@ -60,7 +49,6 @@ const carNameMap = {
 };
 
 async function evaluatePrice(carName, price) {
-  console.log(`[evaluate] carName=${carName} price=${price} apiKeySet=${!!process.env.ANTHROPIC_API_KEY}`);
   const message = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 200,
@@ -107,7 +95,6 @@ app.get('/search', async (req, res) => {
       }
     );
 
-    console.log('API keys:', Object.keys(response.data || {}));
     const rawData = response.data?.data || response.data?.results || response.data || [];
     console.log(`[search] raw count: ${rawData.length}`);
 
@@ -128,6 +115,15 @@ app.get('/search', async (req, res) => {
         evaluation: null,
       };
     });
+
+    // فلتر سيارات مستعملة للبيع فقط
+    cars = cars.filter(c => {
+      const link = c.link?.toLowerCase() || '';
+      return link.includes('/motors/used-cars/');
+    });
+
+    // فلتر سعر أكبر من صفر
+    cars = cars.filter(c => c.price > 0);
 
     if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
     if (maxPrice) cars = cars.filter(c => c.price <= parseInt(maxPrice));
@@ -150,7 +146,7 @@ app.get('/evaluate', async (req, res) => {
     const evaluation = await evaluatePrice(name, price);
     res.json({ evaluation });
   } catch (error) {
-    console.error('[evaluate] Claude API error:', error.status, error.message, error.error);
+    console.error('[evaluate] error:', error.message);
     res.status(500).json({ error: error.message, evaluation: 'سعر معقول للسوق الإماراتي' });
   }
 });
