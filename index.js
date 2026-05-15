@@ -119,13 +119,8 @@ app.get('/search', async (req, res) => {
       };
     });
 
-    // فلتر سيارات مستعملة للبيع فقط
-    cars = cars.filter(c => {
-      const link = c.link?.toLowerCase() || '';
-      return link.includes('/motors/used-cars/') || link.includes('/used-cars/');
-    });
-
-    console.log(`[search] after filter: ${cars.length} cars`);
+    // debug - نشوف الروابط الحقيقية
+    console.log('Sample links:', JSON.stringify(cars.slice(0, 5).map(c => c.link)));
 
     if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
     if (maxPrice) cars = cars.filter(c => c.price <= parseInt(maxPrice));
@@ -134,7 +129,7 @@ app.get('/search', async (req, res) => {
     if (kmFrom) cars = cars.filter(c => c.km && c.km >= parseInt(kmFrom));
     if (kmTo) cars = cars.filter(c => c.km && c.km <= parseInt(kmTo));
 
-    console.log(`[search] final: ${cars.length} cars`);
+    console.log(`[search] found ${cars.length} cars`);
     res.json(cars);
   } catch (error) {
     console.log('Search error:', error.message);
