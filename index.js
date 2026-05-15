@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const Anthropic = require('@anthropic-ai/sdk');
+const admin = require('firebase-admin');
+const cron = require('node-cron');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -14,6 +16,13 @@ app.use((req, res, next) => {
 const RAPID_API_KEY = 'ae797cb768msh2307aedcbc3f711p182834jsn16417a8a0cb7';
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// Firebase Admin
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+const db = admin.firestore();
+
 const cityDomainMap = {
   'دبي': 'dubai', 'Dubai': 'dubai',
   'أبوظبي': 'abudhabi', 'Abu Dhabi': 'abudhabi',
@@ -25,72 +34,25 @@ const cityDomainMap = {
   'العين': 'al-ain', 'Al Ain': 'al-ain',
 };
 
-// slug للماركة في دبيزل
 const brandSlugMap = {
-  'toyota': 'toyota',
-  'nissan': 'nissan',
-  'honda': 'honda',
-  'mercedes': 'mercedes-benz',
-  'bmw': 'bmw',
-  'lexus': 'lexus',
-  'kia': 'kia',
-  'hyundai': 'hyundai',
-  'ford': 'ford',
-  'chevrolet': 'chevrolet',
-  'jeep': 'jeep',
-  'range rover': 'land-rover',
-  'land rover': 'land-rover',
-  'porsche': 'porsche',
-  'audi': 'audi',
-  'volkswagen': 'volkswagen',
-  'mitsubishi': 'mitsubishi',
-  'suzuki': 'suzuki',
-  'mazda': 'mazda',
-  'infiniti': 'infiniti',
-  'tesla': 'tesla',
-  'lamborghini': 'lamborghini',
-  'ferrari': 'ferrari',
-  'bentley': 'bentley',
-  'rolls royce': 'rolls-royce',
-  'maserati': 'maserati',
-  'jaguar': 'jaguar',
-  'volvo': 'volvo',
-  'subaru': 'subaru',
-  'mini': 'mini',
-  'cadillac': 'cadillac',
-  'lincoln': 'lincoln',
-  'dodge': 'dodge',
-  'gmc': 'gmc',
-  'hummer': 'hummer',
-  'genesis': 'genesis',
-  'byd': 'byd',
-  'haval': 'haval',
-  'chery': 'chery',
-  'geely': 'geely',
-  'mg': 'mg',
-  'mclaren': 'mclaren',
-  'aston martin': 'aston-martin',
-  'alfa romeo': 'alfa-romeo',
-  'fiat': 'fiat',
-  'peugeot': 'peugeot',
-  'renault': 'renault',
-  'opel': 'opel',
-  'daihatsu': 'daihatsu',
-  'isuzu': 'isuzu',
-  'chrysler': 'chrysler',
-  'bugatti': 'bugatti',
-  'honda motorcycle': 'honda',
-  'yamaha motorcycle': 'yamaha',
-  'kawasaki': 'kawasaki',
-  'suzuki motorcycle': 'suzuki',
-  'ktm': 'ktm',
-  'bmw motorcycle': 'bmw',
-  'ducati': 'ducati',
-  'harley davidson': 'harley-davidson',
-  'triumph': 'triumph',
-  'indian motorcycle': 'indian',
-  'aprilia': 'aprilia',
-  'vespa': 'vespa',
+  'toyota': 'toyota', 'nissan': 'nissan', 'honda': 'honda',
+  'mercedes': 'mercedes-benz', 'bmw': 'bmw', 'lexus': 'lexus',
+  'kia': 'kia', 'hyundai': 'hyundai', 'ford': 'ford',
+  'chevrolet': 'chevrolet', 'jeep': 'jeep', 'range rover': 'land-rover',
+  'land rover': 'land-rover', 'porsche': 'porsche', 'audi': 'audi',
+  'volkswagen': 'volkswagen', 'mitsubishi': 'mitsubishi', 'suzuki': 'suzuki',
+  'mazda': 'mazda', 'infiniti': 'infiniti', 'tesla': 'tesla',
+  'lamborghini': 'lamborghini', 'ferrari': 'ferrari', 'bentley': 'bentley',
+  'rolls royce': 'rolls-royce', 'maserati': 'maserati', 'jaguar': 'jaguar',
+  'volvo': 'volvo', 'subaru': 'subaru', 'mini': 'mini',
+  'cadillac': 'cadillac', 'lincoln': 'lincoln', 'dodge': 'dodge',
+  'gmc': 'gmc', 'hummer': 'hummer', 'genesis': 'genesis',
+  'byd': 'byd', 'haval': 'haval', 'chery': 'chery',
+  'geely': 'geely', 'mg': 'mg', 'mclaren': 'mclaren',
+  'aston martin': 'aston-martin', 'alfa romeo': 'alfa-romeo',
+  'fiat': 'fiat', 'peugeot': 'peugeot', 'renault': 'renault',
+  'opel': 'opel', 'daihatsu': 'daihatsu', 'isuzu': 'isuzu',
+  'chrysler': 'chrysler', 'bugatti': 'bugatti',
 };
 
 const carNameMap = {
@@ -112,11 +74,9 @@ async function evaluatePrice(carName, price) {
       content: `أنت خبير سيارات في الإمارات. حلل هذه السيارة:
 السيارة: ${carName}
 السعر: ${price} درهم
-
 أعطني تحليل قصير جداً (جملة واحدة أو جملتين) يشمل:
 - هل السعر رخيص أو معقول أو غالي مقارنة بالسوق
 - سبب واحد للشراء أو التحذير
-
 الرد بالعربي فقط، قصير ومباشر.`
     }]
   });
@@ -144,72 +104,120 @@ async function fetchPage(url) {
   }
 }
 
+async function searchCarsData(keyword, city) {
+  const brandSlug = brandSlugMap[keyword.toLowerCase()] || keyword.toLowerCase().replace(/ /g, '-');
+  const cityDomain = city ? (cityDomainMap[city] || 'dubai') : 'dubai';
+  const baseUrl = `https://${cityDomain}.dubizzle.com/motors/used-cars/${brandSlug}/`;
+
+  const [page1, page2, page3] = await Promise.all([
+    fetchPage(baseUrl),
+    fetchPage(baseUrl + '?page=2'),
+    fetchPage(baseUrl + '?page=3'),
+  ]);
+
+  const rawData = [...page1, ...page2, ...page3];
+
+  let cars = rawData.map(car => {
+    const nameText = car.name?.en || car.name || '';
+    const yearMatch = nameText.match(/\b(19|20)\d{2}\b/);
+    const year = yearMatch ? parseInt(yearMatch[0]) : null;
+    const link = car.absolute_url?.en || car.absolute_url || '';
+    return {
+      name: nameText,
+      price: car.price || 0,
+      city: car.site?.en || car.city || '',
+      year: year,
+      km: car.kilometers || car.mileage || null,
+      color: car.color || '',
+      link: link,
+      image: car.photos?.thumb || car.photo_thumbnails?.[0] || '',
+    };
+  });
+
+  cars = cars.filter(c => c.link?.toLowerCase().includes('/motors/used-cars/'));
+
+  const seen = new Set();
+  cars = cars.filter(c => {
+    if (seen.has(c.link)) return false;
+    seen.add(c.link);
+    return true;
+  });
+
+  return cars;
+}
+
+// فحص الإشعارات كل 30 دقيقة
+cron.schedule('*/30 * * * *', async () => {
+  console.log('[cron] Checking saved searches...');
+  try {
+    const searchesSnap = await db.collection('searches').get();
+    const tokensSnap = await db.collection('tokens').get();
+    const tokens = tokensSnap.docs.map(d => d.data().token).filter(Boolean);
+
+    if (tokens.length === 0) return;
+
+    for (const searchDoc of searchesSnap.docs) {
+      const search = searchDoc.data();
+      const keyword = search.brand;
+      const city = search.city;
+
+      try {
+        const cars = await searchCarsData(keyword, city);
+        const lastChecked = search.lastChecked || 0;
+        const newCars = cars.filter(c => {
+          const linkId = c.link?.split('---')[1]?.replace('/', '') || '';
+          return linkId && !search.seenLinks?.includes(linkId);
+        });
+
+        if (newCars.length > 0) {
+          console.log(`[cron] Found ${newCars.length} new cars for ${keyword}`);
+
+          // إرسال إشعار لكل token
+          for (const token of tokens) {
+            try {
+              await admin.messaging().send({
+                token,
+                notification: {
+                  title: `🚗 ${newCars.length} سيارة جديدة - ${search.brandLabel}`,
+                  body: `${newCars[0].name} - AED ${newCars[0].price?.toLocaleString()}`,
+                },
+                data: {
+                  brand: keyword,
+                  count: String(newCars.length),
+                }
+              });
+            } catch (e) {
+              console.log('FCM error:', e.message);
+            }
+          }
+
+          // تحديث الـ seenLinks
+          const newSeenLinks = [
+            ...(search.seenLinks || []),
+            ...newCars.map(c => c.link?.split('---')[1]?.replace('/', '') || '')
+          ].slice(-100);
+
+          await db.collection('searches').doc(searchDoc.id).update({
+            seenLinks: newSeenLinks,
+            lastChecked: Date.now(),
+          });
+        }
+      } catch (e) {
+        console.log(`[cron] Error for ${keyword}:`, e.message);
+      }
+    }
+  } catch (e) {
+    console.log('[cron] Error:', e.message);
+  }
+});
+
 app.get('/search', async (req, res) => {
   const { q, minPrice, maxPrice, city, yearFrom, yearTo, kmFrom, kmTo } = req.query;
   if (!q) return res.json([]);
 
   try {
     const searchKeyword = carNameMap[q] || q;
-    const brandSlug = brandSlugMap[searchKeyword.toLowerCase()] || searchKeyword.toLowerCase().replace(/ /g, '-');
-    const cityDomain = city ? (cityDomainMap[city] || 'dubai') : 'dubai';
-
-    // URL مباشر للماركة
-    const baseUrl = `https://${cityDomain}.dubizzle.com/motors/used-cars/${brandSlug}/`;
-
-    console.log(`[search] url=${baseUrl}`);
-
-    const [page1, page2, page3] = await Promise.all([
-      fetchPage(baseUrl),
-      fetchPage(baseUrl + '?page=2'),
-      fetchPage(baseUrl + '?page=3'),
-    ]);
-
-    const rawData = [...page1, ...page2, ...page3];
-    console.log(`[search] total raw: ${rawData.length}`);
-
-    let cars = rawData.map(car => {
-      const nameText = car.name?.en || car.name || '';
-      const yearMatch = nameText.match(/\b(19|20)\d{2}\b/);
-      const year = yearMatch ? parseInt(yearMatch[0]) : null;
-      const link = car.absolute_url?.en || car.absolute_url || '';
-      return {
-        name: nameText,
-        price: car.price || 0,
-        city: car.site?.en || car.city || '',
-        year: year,
-        km: car.kilometers || car.mileage || null,
-        color: car.color || '',
-        link: link,
-        image: car.photos?.thumb || car.photo_thumbnails?.[0] || '',
-        evaluation: null,
-      };
-    });
-
-    // فلتر سيارات للبيع فقط
-    cars = cars.filter(c => {
-      const link = c.link?.toLowerCase() || '';
-      return link.includes('/motors/used-cars/');
-    });
-
-    // إزالة المكررات
-    const seen = new Set();
-    cars = cars.filter(c => {
-      if (seen.has(c.link)) return false;
-      seen.add(c.link);
-      return true;
-    });
-
-    // فلتر موديل لو المستخدم حدد موديل معين
-    if (q && q.includes(' ')) {
-      const modelPart = searchKeyword.split(' ').slice(1).join(' ').toLowerCase();
-      if (modelPart) {
-        cars = cars.filter(c => {
-          const nameLower = c.name?.toLowerCase() || '';
-          const linkLower = c.link?.toLowerCase() || '';
-          return nameLower.includes(modelPart) || linkLower.includes(modelPart);
-        });
-      }
-    }
+    let cars = await searchCarsData(searchKeyword, city);
 
     if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
     if (maxPrice) cars = cars.filter(c => c.price <= parseInt(maxPrice));
@@ -223,6 +231,18 @@ app.get('/search', async (req, res) => {
   } catch (error) {
     console.log('Search error:', error.message);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// حفظ token الجوال
+app.post('/token', async (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: 'No token' });
+  try {
+    await db.collection('tokens').doc(token).set({ token, createdAt: new Date().toISOString() });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
