@@ -99,11 +99,14 @@ app.get('/search', async (req, res) => {
       }
     );
 
+    console.log('API Response keys:', Object.keys(response.data || {}));
+    console.log('API Response sample:', JSON.stringify(response.data).substring(0, 500));
+
     const rawData = response.data?.data || response.data?.results || response.data || [];
 
     let cars = rawData.map(car => {
       const nameText = car.name?.en || car.name || '';
-      const yearMatch = nameText.match(/\b(19|20)\d{2}\b/);
+      const yearMatch = nameText.match(/\b(19|20)\d{2}\d{2}\b/);
       const year = yearMatch ? parseInt(yearMatch[0]) : null;
       return {
         name: nameText,
