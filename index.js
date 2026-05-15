@@ -87,7 +87,6 @@ app.get('/search', async (req, res) => {
 
     console.log(`[search] keyword=${searchKeyword} city=${cityDomain}`);
 
-    // جيب 3 صفحات بالتوازي
     const [page1, page2, page3] = await Promise.all([
       fetchPage(baseUrl),
       fetchPage(baseUrl + '&page=2'),
@@ -127,6 +126,14 @@ app.get('/search', async (req, res) => {
       if (seen.has(c.link)) return false;
       seen.add(c.link);
       return true;
+    });
+
+    // فلتر ذكي بالرابط
+    const engKeyword = searchKeyword.toLowerCase().split(' ')[0];
+    cars = cars.filter(c => {
+      const link = c.link?.toLowerCase() || '';
+      const name = c.name?.toLowerCase() || '';
+      return link.includes('/' + engKeyword + '/') || name.includes(engKeyword);
     });
 
     if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
