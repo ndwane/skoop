@@ -15,47 +15,33 @@ const RAPID_API_KEY = 'ae797cb768msh2307aedcbc3f711p182834jsn16417a8a0cb7';
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const cityDomainMap = {
-  'دبي': 'dubai',
-  'أبوظبي': 'abudhabi',
-  'الشارقة': 'sharjah',
-  'عجمان': 'ajman',
-  'رأس الخيمة': 'ras-al-khaimah',
-  'الفجيرة': 'fujairah',
-  'أم القيوين': 'umm-al-quwain',
-  'العين': 'al-ain',
+  'دبي': 'dubai', 'Dubai': 'dubai',
+  'أبوظبي': 'abudhabi', 'Abu Dhabi': 'abudhabi',
+  'الشارقة': 'sharjah', 'Sharjah': 'sharjah',
+  'عجمان': 'ajman', 'Ajman': 'ajman',
+  'رأس الخيمة': 'ras-al-khaimah', 'Ras Al Khaimah': 'ras-al-khaimah',
+  'الفجيرة': 'fujairah', 'Fujairah': 'fujairah',
+  'أم القيوين': 'umm-al-quwain', 'Umm Al Quwain': 'umm-al-quwain',
+  'العين': 'al-ain', 'Al Ain': 'al-ain',
 };
 
 const carNameMap = {
-  'نيسان': 'nissan',
-  'تويوتا': 'toyota',
-  'هوندا': 'honda',
-  'مرسيدس': 'mercedes',
-  'بي ام دبليو': 'bmw',
-  'لكزس': 'lexus',
-  'كيا': 'kia',
-  'هيونداي': 'hyundai',
-  'فورد': 'ford',
-  'شيفروليه': 'chevrolet',
-  'جيب': 'jeep',
-  'رنج روفر': 'range rover',
-  'لاند روفر': 'land rover',
-  'بورش': 'porsche',
-  'اودي': 'audi',
-  'فولكس': 'volkswagen',
-  'ميتسوبيشي': 'mitsubishi',
-  'سوزوكي': 'suzuki',
-  'مازدا': 'mazda',
-  'انفينيتي': 'infiniti',
+  'نيسان': 'nissan', 'تويوتا': 'toyota', 'هوندا': 'honda',
+  'مرسيدس': 'mercedes', 'بي ام دبليو': 'bmw', 'لكزس': 'lexus',
+  'كيا': 'kia', 'هيونداي': 'hyundai', 'فورد': 'ford',
+  'شيفروليه': 'chevrolet', 'جيب': 'jeep', 'رنج روفر': 'range rover',
+  'لاند روفر': 'land rover', 'بورش': 'porsche', 'اودي': 'audi',
+  'فولكس': 'volkswagen', 'ميتسوبيشي': 'mitsubishi', 'سوزوكي': 'suzuki',
+  'مازدا': 'mazda', 'انفينيتي': 'infiniti',
 };
 
 async function evaluatePrice(carName, price) {
   const message = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 200,
-    messages: [
-      {
-        role: 'user',
-        content: `أنت خبير سيارات في الإمارات. حلل هذه السيارة:
+    messages: [{
+      role: 'user',
+      content: `أنت خبير سيارات في الإمارات. حلل هذه السيارة:
 السيارة: ${carName}
 السعر: ${price} درهم
 
@@ -64,27 +50,16 @@ async function evaluatePrice(carName, price) {
 - سبب واحد للشراء أو التحذير
 
 الرد بالعربي فقط، قصير ومباشر.`
-      }
-    ]
+    }]
   });
   return message.content[0].text.trim();
 }
 
-app.get('/search', async (req, res) => {
-  const { q, minPrice, maxPrice, city, yearFrom, yearTo, kmFrom, kmTo } = req.query;
-
-  if (!q) return res.json([]);
-
+async function fetchPage(url) {
   try {
-    const searchKeyword = carNameMap[q] || q;
-    const cityDomain = city ? (cityDomainMap[city] || 'dubai') : 'dubai';
-    const searchUrl = `https://${cityDomain}.dubizzle.com/motors/used-cars/?q=${encodeURIComponent(searchKeyword)}`;
-
-    console.log(`[search] url=${searchUrl}`);
-
     const response = await axios.post(
       'https://dubizzle-api.p.rapidapi.com/scrapers/api/dubizzle/product/listing-by-url',
-      { url: searchUrl },
+      { url },
       {
         headers: {
           'Content-Type': 'application/json',
@@ -94,9 +69,33 @@ app.get('/search', async (req, res) => {
         timeout: 30000
       }
     );
+    return response.data?.data || response.data?.results || response.data || [];
+  } catch (e) {
+    console.log('Page fetch error:', e.message);
+    return [];
+  }
+}
 
-    const rawData = response.data?.data || response.data?.results || response.data || [];
-    console.log(`[search] raw count: ${rawData.length}`);
+app.get('/search', async (req, res) => {
+  const { q, minPrice, maxPrice, city, yearFrom, yearTo, kmFrom, kmTo } = req.query;
+  if (!q) return res.json([]);
+
+  try {
+    const searchKeyword = carNameMap[q] || q;
+    const cityDomain = city ? (cityDomainMap[city] || 'dubai') : 'dubai';
+    const baseUrl = `https://${cityDomain}.dubizzle.com/motors/used-cars/?q=${encodeURIComponent(searchKeyword)}`;
+
+    console.log(`[search] keyword=${searchKeyword} city=${cityDomain}`);
+
+    // جيب 3 صفحات بالتوازي
+    const [page1, page2, page3] = await Promise.all([
+      fetchPage(baseUrl),
+      fetchPage(baseUrl + '&page=2'),
+      fetchPage(baseUrl + '&page=3'),
+    ]);
+
+    const rawData = [...page1, ...page2, ...page3];
+    console.log(`[search] total raw: ${rawData.length}`);
 
     let cars = rawData.map(car => {
       const nameText = car.name?.en || car.name || '';
@@ -116,17 +115,18 @@ app.get('/search', async (req, res) => {
       };
     });
 
-    // فلتر سيارات مستعملة للبيع فقط
+    // فلتر سيارات للبيع فقط
     cars = cars.filter(c => {
       const link = c.link?.toLowerCase() || '';
       return link.includes('/motors/used-cars/');
     });
 
-    // فلتر بالاسم — يتأكد إن السيارة المطلوبة فقط تظهر
-    const engKeyword = searchKeyword.toLowerCase();
+    // إزالة المكررات
+    const seen = new Set();
     cars = cars.filter(c => {
-      const nameLower = c.name?.toLowerCase() || '';
-      return nameLower.includes(engKeyword) || nameLower.includes(q.toLowerCase());
+      if (seen.has(c.link)) return false;
+      seen.add(c.link);
+      return true;
     });
 
     if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
