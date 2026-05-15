@@ -128,14 +128,6 @@ app.get('/search', async (req, res) => {
       return true;
     });
 
-    // فلتر ذكي بالرابط
-    const engKeyword = searchKeyword.toLowerCase().split(' ')[0];
-    cars = cars.filter(c => {
-      const link = c.link?.toLowerCase() || '';
-      const name = c.name?.toLowerCase() || '';
-      return link.includes('/' + engKeyword + '/') || name.includes(engKeyword);
-    });
-
     if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
     if (maxPrice) cars = cars.filter(c => c.price <= parseInt(maxPrice));
     if (yearFrom) cars = cars.filter(c => c.year && c.year >= parseInt(yearFrom));
