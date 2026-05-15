@@ -122,8 +122,12 @@ app.get('/search', async (req, res) => {
       return link.includes('/motors/used-cars/');
     });
 
-    // فلتر سعر أكبر من صفر
-    cars = cars.filter(c => c.price > 0);
+    // فلتر بالاسم — يتأكد إن السيارة المطلوبة فقط تظهر
+    const engKeyword = searchKeyword.toLowerCase();
+    cars = cars.filter(c => {
+      const nameLower = c.name?.toLowerCase() || '';
+      return nameLower.includes(engKeyword) || nameLower.includes(q.toLowerCase());
+    });
 
     if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
     if (maxPrice) cars = cars.filter(c => c.price <= parseInt(maxPrice));

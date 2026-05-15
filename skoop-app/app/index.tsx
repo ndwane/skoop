@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
-  StyleSheet, ActivityIndicator, Linking, ScrollView, Modal
+  StyleSheet, ActivityIndicator, Linking, ScrollView, Modal, SafeAreaView
 } from 'react-native';
 
 const API_URL = 'https://skoop-production.up.railway.app';
@@ -15,7 +15,6 @@ const COLORS = [
   { label: 'فضي', hex: '#C0C0C0' },
   { label: 'أحمر', hex: '#C0392B' },
   { label: 'أزرق', hex: '#2980B9' },
-  { label: 'أزرق فاتح', hex: '#85C1E9' },
   { label: 'أخضر', hex: '#27AE60' },
   { label: 'ذهبي', hex: '#F39C12' },
   { label: 'بيج', hex: '#D4B896' },
@@ -32,6 +31,7 @@ export default function Index() {
   const [cars, setCars] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [activeTab, setActiveTab] = useState('home');
 
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
@@ -63,17 +63,15 @@ export default function Index() {
       setCars(results);
 
       results.forEach(async (car, index) => {
-        if (car.price) {
-          try {
-            const evalResponse = await fetch(
-              API_URL + '/evaluate?name=' + encodeURIComponent(car.name || '') + '&price=' + car.price
-            );
-            const evalData = await evalResponse.json();
-            setCars(prev => prev.map((c, i) =>
-              i === index ? { ...c, evaluation: evalData.evaluation } : c
-            ));
-          } catch (e) {}
-        }
+        try {
+          const evalResponse = await fetch(
+            API_URL + '/evaluate?name=' + encodeURIComponent(car.name || '') + '&price=' + (car.price || 0)
+          );
+          const evalData = await evalResponse.json();
+          setCars(prev => prev.map((c, i) =>
+            i === index ? { ...c, evaluation: evalData.evaluation } : c
+          ));
+        } catch (e) {}
       });
 
     } catch (error) {
@@ -99,10 +97,17 @@ export default function Index() {
   ].filter(Boolean).length;
 
   const getEvalColor = (ev) => {
-    if (!ev) return '#555';
-    if (ev.includes('رخيص')) return '#00E676';
-    if (ev.includes('غالي')) return '#FF4444';
-    return '#FFB800';
+    if (!ev) return '#999';
+    if (ev.includes('رخيص')) return '#22C55E';
+    if (ev.includes('غالي')) return '#EF4444';
+    return '#F59E0B';
+  };
+
+  const getEvalBg = (ev) => {
+    if (!ev) return '#F3F4F6';
+    if (ev.includes('رخيص')) return '#DCFCE7';
+    if (ev.includes('غالي')) return '#FEE2E2';
+    return '#FEF3C7';
   };
 
   const getEvalEmoji = (ev) => {
@@ -113,64 +118,168 @@ export default function Index() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.logo}>🔍 سكوب</Text>
-      <Text style={styles.subtitle}>ابحث عن أفضل صفقة سيارة في الإمارات</Text>
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.logo}>🔍 سكوب</Text>
+        <TouchableOpacity
+          style={[styles.filterIconBtn, activeFiltersCount > 0 && styles.filterIconActive]}
+          onPress={() => setShowFilters(true)}
+        >
+          <Text style={styles.filterIconText}>⚙️</Text>
+          {activeFiltersCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{activeFiltersCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
 
-      <View style={styles.searchRow}>
+      {/* Search Bar */}
+      <View style={styles.searchBox}>
         <TextInput
           style={styles.input}
-          placeholder="نيسان باترول..."
+          placeholder="ابحث عن سيارة... (نيسان، تويوتا...)"
           value={search}
           onChangeText={setSearch}
           textAlign="right"
-          placeholderTextColor="#555"
+          placeholderTextColor="#AAA"
           onSubmitEditing={searchCars}
         />
-        <TouchableOpacity
-          style={[styles.filterBtn, activeFiltersCount > 0 && styles.filterBtnActive]}
-          onPress={() => setShowFilters(true)}
-        >
-          <Text style={styles.filterBtnText}>
-            ⚙️{activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ''}
-          </Text>
-        </TouchableOpacity>
         <TouchableOpacity style={styles.searchBtn} onPress={searchCars}>
           <Text style={styles.searchBtnText}>بحث</Text>
         </TouchableOpacity>
       </View>
 
+      {/* Active Filters Chips */}
+      {activeFiltersCount > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.activeFilters}>
+          {selectedCity !== 'الكل' && (
+            <View style={styles.activeChip}>
+              <Text style={styles.activeChipText}>📍 {selectedCity}</Text>
+            </View>
+          )}
+          {(minPrice || maxPrice) && (
+            <View style={styles.activeChip}>
+              <Text style={styles.activeChipText}>💰 {minPrice || '0'} - {maxPrice || '∞'}</Text>
+            </View>
+          )}
+          {(yearFrom || yearTo) && (
+            <View style={styles.activeChip}>
+              <Text style={styles.activeChipText}>📅 {yearFrom || '...'} - {yearTo || '...'}</Text>
+            </View>
+          )}
+          {(kmFrom || kmTo) && (
+            <View style={styles.activeChip}>
+              <Text style={styles.activeChipText}>🛣️ {kmFrom || '0'} - {kmTo || '∞'} كم</Text>
+            </View>
+          )}
+          <TouchableOpacity style={styles.clearChip} onPress={resetFilters}>
+            <Text style={styles.clearChipText}>✕ مسح</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      )}
+
+      {/* Loading */}
       {loading && (
         <View style={styles.loadingBox}>
-          <ActivityIndicator size="large" color="#FF4D00" />
+          <ActivityIndicator size="large" color="#6366F1" />
           <Text style={styles.loadingText}>جاري البحث...</Text>
         </View>
       )}
 
+      {/* Results Count */}
       {!loading && cars.length > 0 && (
         <Text style={styles.resultsCount}>{cars.length} نتيجة</Text>
       )}
 
+      {/* Empty State */}
+      {!loading && cars.length === 0 && search === '' && (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyIcon}>🚗</Text>
+          <Text style={styles.emptyTitle}>ابحث عن سيارتك</Text>
+          <Text style={styles.emptySubtitle}>أدخل اسم السيارة للبحث عن أفضل الصفقات في الإمارات</Text>
+        </View>
+      )}
+
+      {/* Cars List */}
       <FlatList
         data={cars}
         keyExtractor={(_, index) => index.toString()}
+        contentContainerStyle={{ paddingBottom: 80 }}
         renderItem={({ item }) => (
-          <TouchableOpacity style={styles.card} onPress={() => item.link && Linking.openURL(item.link)}>
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => item.link && Linking.openURL(item.link)}
+          >
+            {/* Car Name */}
             <Text style={styles.carName}>{item.name}</Text>
-            <View style={styles.priceRow}>
-              <Text style={[styles.evaluation, { color: getEvalColor(item.evaluation) }]}>
-                {getEvalEmoji(item.evaluation)} {item.evaluation || 'جاري التحليل...'}
-              </Text>
-              <Text style={styles.carPrice}>AED {item.price?.toLocaleString()}</Text>
+
+            {/* Price */}
+            <Text style={styles.carPrice}>
+              {item.price > 0 ? `AED ${item.price?.toLocaleString()}` : 'السعر عند التواصل'}
+            </Text>
+
+            {/* AI Evaluation */}
+            {item.evaluation && (
+              <View style={[styles.evalBox, { backgroundColor: getEvalBg(item.evaluation) }]}>
+                <Text style={[styles.evalText, { color: getEvalColor(item.evaluation) }]}>
+                  {getEvalEmoji(item.evaluation)} {item.evaluation}
+                </Text>
+              </View>
+            )}
+            {!item.evaluation && (
+              <View style={styles.evalBoxLoading}>
+                <Text style={styles.evalLoadingText}>⏳ جاري تحليل السعر...</Text>
+              </View>
+            )}
+
+            {/* Details Chips */}
+            <View style={styles.chipsRow}>
+              {item.city ? (
+                <View style={styles.detailChip}>
+                  <Text style={styles.detailChipText}>📍 {item.city}</Text>
+                </View>
+              ) : null}
+              {item.year ? (
+                <View style={styles.detailChip}>
+                  <Text style={styles.detailChipText}>📅 {item.year}</Text>
+                </View>
+              ) : null}
+              {item.km ? (
+                <View style={styles.detailChip}>
+                  <Text style={styles.detailChipText}>🛣️ {item.km?.toLocaleString()} كم</Text>
+                </View>
+              ) : null}
             </View>
-            <Text style={styles.carCity}>📍 {item.city}</Text>
-            {item.year ? <Text style={styles.carDetail}>📅 {item.year}</Text> : null}
-            {item.km ? <Text style={styles.carDetail}>🛣️ {item.km?.toLocaleString()} كم</Text> : null}
+
             <Text style={styles.tapHint}>اضغط لفتح الإعلان ←</Text>
           </TouchableOpacity>
         )}
       />
 
+      {/* Bottom Navigation */}
+      <View style={styles.bottomNav}>
+        {[
+          { id: 'home', icon: '🏠', label: 'الرئيسية' },
+          { id: 'search', icon: '🔍', label: 'بحث' },
+          { id: 'saved', icon: '🔖', label: 'المحفوظة' },
+          { id: 'settings', icon: '⚙️', label: 'الإعدادات' },
+        ].map(tab => (
+          <TouchableOpacity
+            key={tab.id}
+            style={styles.navItem}
+            onPress={() => setActiveTab(tab.id)}
+          >
+            <Text style={styles.navIcon}>{tab.icon}</Text>
+            <Text style={[styles.navLabel, activeTab === tab.id && styles.navLabelActive]}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Filters Modal */}
       <Modal visible={showFilters} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
@@ -194,7 +303,7 @@ export default function Index() {
                   onChangeText={setMaxPrice}
                   keyboardType="numeric"
                   textAlign="center"
-                  placeholderTextColor="#555"
+                  placeholderTextColor="#AAA"
                 />
                 <Text style={styles.rangeDash}>—</Text>
                 <TextInput
@@ -204,7 +313,7 @@ export default function Index() {
                   onChangeText={setMinPrice}
                   keyboardType="numeric"
                   textAlign="center"
-                  placeholderTextColor="#555"
+                  placeholderTextColor="#AAA"
                 />
               </View>
 
@@ -217,7 +326,7 @@ export default function Index() {
                   onChangeText={setYearTo}
                   keyboardType="numeric"
                   textAlign="center"
-                  placeholderTextColor="#555"
+                  placeholderTextColor="#AAA"
                   maxLength={4}
                 />
                 <Text style={styles.rangeDash}>—</Text>
@@ -228,7 +337,7 @@ export default function Index() {
                   onChangeText={setYearFrom}
                   keyboardType="numeric"
                   textAlign="center"
-                  placeholderTextColor="#555"
+                  placeholderTextColor="#AAA"
                   maxLength={4}
                 />
               </View>
@@ -237,22 +346,22 @@ export default function Index() {
               <View style={styles.rangeRow}>
                 <TextInput
                   style={styles.rangeInput}
-                  placeholder="إلى (150000)"
+                  placeholder="إلى"
                   value={kmTo}
                   onChangeText={setKmTo}
                   keyboardType="numeric"
                   textAlign="center"
-                  placeholderTextColor="#555"
+                  placeholderTextColor="#AAA"
                 />
                 <Text style={styles.rangeDash}>—</Text>
                 <TextInput
                   style={styles.rangeInput}
-                  placeholder="من (0)"
+                  placeholder="من"
                   value={kmFrom}
                   onChangeText={setKmFrom}
                   keyboardType="numeric"
                   textAlign="center"
-                  placeholderTextColor="#555"
+                  placeholderTextColor="#AAA"
                 />
               </View>
 
@@ -302,62 +411,87 @@ export default function Index() {
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0A0A0F', padding: 20, paddingTop: 60 },
-  logo: { fontSize: 32, fontWeight: 'bold', color: '#FF4D00', textAlign: 'center', marginBottom: 8 },
-  subtitle: { color: '#888', textAlign: 'center', marginBottom: 30, fontSize: 14 },
+  container: { flex: 1, backgroundColor: '#F0F2F8' },
 
-  searchRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
-  input: { flex: 1, backgroundColor: '#1a1a2e', color: 'white', padding: 14, borderRadius: 12, fontSize: 15 },
-  filterBtn: { backgroundColor: '#1a1a2e', padding: 14, borderRadius: 12, justifyContent: 'center', borderWidth: 1, borderColor: '#333' },
-  filterBtnActive: { borderColor: '#FF4D00' },
-  filterBtnText: { fontSize: 18 },
-  searchBtn: { backgroundColor: '#FF4D00', padding: 14, borderRadius: 12, justifyContent: 'center' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16 },
+  logo: { fontSize: 24, fontWeight: 'bold', color: '#1E1E2E' },
+  filterIconBtn: { padding: 10, backgroundColor: 'white', borderRadius: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
+  filterIconActive: { backgroundColor: '#EEF2FF' },
+  filterIconText: { fontSize: 20 },
+  badge: { position: 'absolute', top: -4, right: -4, backgroundColor: '#6366F1', borderRadius: 10, width: 18, height: 18, justifyContent: 'center', alignItems: 'center' },
+  badgeText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
+
+  searchBox: { flexDirection: 'row', marginHorizontal: 20, marginBottom: 12, gap: 10 },
+  input: { flex: 1, backgroundColor: 'white', color: '#1E1E2E', padding: 14, borderRadius: 14, fontSize: 15, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  searchBtn: { backgroundColor: '#6366F1', paddingHorizontal: 20, borderRadius: 14, justifyContent: 'center' },
   searchBtnText: { color: 'white', fontWeight: 'bold', fontSize: 15 },
 
-  loadingBox: { alignItems: 'center', marginBottom: 20 },
-  loadingText: { color: '#888', marginTop: 10, fontSize: 13 },
-  resultsCount: { color: '#555', fontSize: 13, textAlign: 'right', marginBottom: 10 },
+  activeFilters: { paddingHorizontal: 20, marginBottom: 10 },
+  activeChip: { backgroundColor: '#EEF2FF', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, marginRight: 8, borderWidth: 1, borderColor: '#C7D2FE' },
+  activeChipText: { color: '#6366F1', fontSize: 12, fontWeight: '600' },
+  clearChip: { backgroundColor: '#FEE2E2', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, marginRight: 8 },
+  clearChipText: { color: '#EF4444', fontSize: 12, fontWeight: '600' },
 
-  card: { backgroundColor: '#111118', padding: 16, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: '#222' },
-  carName: { color: 'white', fontSize: 15, fontWeight: 'bold', marginBottom: 10, textAlign: 'right' },
-  priceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  carPrice: { color: '#FF4D00', fontSize: 18, fontWeight: 'bold' },
-  evaluation: { fontSize: 14, fontWeight: 'bold' },
-  carCity: { color: '#888', fontSize: 13, textAlign: 'right', marginTop: 4 },
-  carDetail: { color: '#666', fontSize: 12, textAlign: 'right', marginTop: 2 },
-  tapHint: { color: '#444', fontSize: 11, textAlign: 'left', marginTop: 8 },
+  loadingBox: { alignItems: 'center', marginTop: 40 },
+  loadingText: { color: '#888', marginTop: 12, fontSize: 14 },
+  resultsCount: { color: '#888', fontSize: 13, textAlign: 'right', paddingHorizontal: 20, marginBottom: 8 },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modalBox: { backgroundColor: '#111118', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
+  emptyIcon: { fontSize: 60, marginBottom: 16 },
+  emptyTitle: { fontSize: 20, fontWeight: 'bold', color: '#1E1E2E', marginBottom: 8 },
+  emptySubtitle: { fontSize: 14, color: '#888', textAlign: 'center', lineHeight: 22 },
+
+  card: { backgroundColor: 'white', marginHorizontal: 20, marginBottom: 12, borderRadius: 16, padding: 16, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, elevation: 3 },
+  carName: { color: '#1E1E2E', fontSize: 15, fontWeight: 'bold', marginBottom: 6, textAlign: 'right' },
+  carPrice: { color: '#6366F1', fontSize: 20, fontWeight: 'bold', textAlign: 'right', marginBottom: 10 },
+
+  evalBox: { borderRadius: 10, padding: 10, marginBottom: 10 },
+  evalText: { fontSize: 13, fontWeight: '600', textAlign: 'right', lineHeight: 20 },
+  evalBoxLoading: { backgroundColor: '#F3F4F6', borderRadius: 10, padding: 10, marginBottom: 10 },
+  evalLoadingText: { color: '#999', fontSize: 13, textAlign: 'right' },
+
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+  detailChip: { backgroundColor: '#F3F4F6', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  detailChipText: { color: '#666', fontSize: 12 },
+
+  tapHint: { color: '#CCC', fontSize: 11, textAlign: 'left', marginTop: 10 },
+
+  bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'white', flexDirection: 'row', paddingVertical: 10, paddingBottom: 20, borderTopWidth: 1, borderTopColor: '#F0F0F0', shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, elevation: 10 },
+  navItem: { flex: 1, alignItems: 'center' },
+  navIcon: { fontSize: 22 },
+  navLabel: { fontSize: 11, color: '#AAA', marginTop: 2 },
+  navLabelActive: { color: '#6366F1', fontWeight: 'bold' },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalBox: { backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-  modalTitle: { color: 'white', fontSize: 18, fontWeight: 'bold' },
-  resetText: { color: '#FF4D00', fontSize: 14 },
+  modalTitle: { color: '#1E1E2E', fontSize: 18, fontWeight: 'bold' },
+  resetText: { color: '#6366F1', fontSize: 14 },
   closeText: { color: '#888', fontSize: 18 },
 
-  filterLabel: { color: '#888', fontSize: 12, marginBottom: 10, textAlign: 'right' },
+  filterLabel: { color: '#888', fontSize: 12, marginBottom: 10, textAlign: 'right', fontWeight: '600' },
   rangeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 20 },
-  rangeInput: { flex: 1, backgroundColor: '#1a1a2e', color: 'white', padding: 12, borderRadius: 10, fontSize: 13, borderWidth: 1, borderColor: '#333' },
-  rangeDash: { color: '#555', fontSize: 16 },
+  rangeInput: { flex: 1, backgroundColor: '#F3F4F6', color: '#1E1E2E', padding: 12, borderRadius: 10, fontSize: 13, borderWidth: 1, borderColor: '#E5E7EB' },
+  rangeDash: { color: '#CCC', fontSize: 16 },
 
-  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
-  chip: { backgroundColor: '#1a1a2e', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7, borderWidth: 1, borderColor: '#333' },
-  chipActive: { backgroundColor: '#FF4D00', borderColor: '#FF4D00' },
-  chipText: { color: '#888', fontSize: 13 },
+  chip: { backgroundColor: '#F3F4F6', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7, borderWidth: 1, borderColor: '#E5E7EB' },
+  chipActive: { backgroundColor: '#6366F1', borderColor: '#6366F1' },
+  chipText: { color: '#666', fontSize: 13 },
   chipTextActive: { color: 'white', fontWeight: 'bold' },
 
   colorsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 24 },
   colorItem: { alignItems: 'center', width: 52 },
-  colorCircle: { width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: '#333', marginBottom: 4 },
-  colorCircleWhite: { borderColor: '#555' },
-  colorCircleActive: { borderColor: '#FF4D00', borderWidth: 3 },
-  colorLabel: { color: '#666', fontSize: 10, textAlign: 'center' },
-  colorLabelActive: { color: '#FF4D00', fontWeight: 'bold' },
+  colorCircle: { width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: '#E5E7EB', marginBottom: 4 },
+  colorCircleWhite: { borderColor: '#CCC' },
+  colorCircleActive: { borderColor: '#6366F1', borderWidth: 3 },
+  colorLabel: { color: '#888', fontSize: 10, textAlign: 'center' },
+  colorLabelActive: { color: '#6366F1', fontWeight: 'bold' },
 
-  applyBtn: { backgroundColor: '#FF4D00', borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 20 },
+  applyBtn: { backgroundColor: '#6366F1', borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 20 },
   applyBtnText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
 });
