@@ -16,7 +16,6 @@ app.use((req, res, next) => {
 const RAPID_API_KEY = 'ae797cb768msh2307aedcbc3f711p182834jsn16417a8a0cb7';
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// Firebase Admin
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const db = admin.firestore();
@@ -68,6 +67,7 @@ const carNameMap = {
   'مازدا': 'mazda', 'انفينيتي': 'infiniti',
 };
 
+// ===== Claude تحليل السعر =====
 async function evaluatePrice(carName, price) {
   const message = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
@@ -86,7 +86,8 @@ async function evaluatePrice(carName, price) {
   return message.content[0].text.trim();
 }
 
-async function fetchPage(url) {
+// ===== دبيزل =====
+async function fetchDubizzlePage(url) {
   try {
     const response = await axios.post(
       'https://dubizzle-api.p.rapidapi.com/scrapers/api/dubizzle/product/listing-by-url',
@@ -102,14 +103,208 @@ async function fetchPage(url) {
     );
     return response.data?.data || response.data?.results || response.data || [];
   } catch (e) {
-    console.log('Page fetch error:', e.message);
+    console.log('[dubizzle] fetch error:', e.message);
     return [];
   }
 }
 
-async function searchCarsData(q, city) {
-  const searchKeyword = carNameMap[q] || q;
+async function searchDubizzle(brandSlug, cityDomain, modelFilter) {
+  try {
+    const baseUrl = `https://${cityDomain}.dubizzle.com/motors/used-cars/${brandSlug}/`;
+    const [p1, p2, p3] = await Promise.all([
+      fetchDubizzlePage(baseUrl),
+      fetchDubizzlePage(baseUrl + '?page=2'),
+      fetchDubizzlePage(baseUrl + '?page=3'),
+    ]);
+    let cars = [...p1, ...p2, ...p3].map(car => {
+      const nameText = car.name?.en || car.name || '';
+      const yearMatch = nameText.match(/\b(19|20)\d{2}\b/);
+      const link = car.absolute_url?.en || car.absolute_url || '';
+      return {
+        name: nameText,
+        price: car.price || 0,
+        city: car.site?.en || car.city || '',
+        year: yearMatch ? parseInt(yearMatch[0]) : null,
+        km: car.kilometers || car.mileage || null,
+        link,
+        image: car.photos?.thumb || car.photo_thumbnails?.[0] || '',
+        source: 'Dubizzle',
+      };
+    }).filter(c => c.link?.toLowerCase().includes('/motors/used-cars/'));
 
+    if (modelFilter) {
+      cars = cars.filter(c =>
+        c.name?.toLowerCase().includes(modelFilter) ||
+        c.link?.toLowerCase().includes(modelFilter.replace(/ /g, '-'))
+      );
+    }
+    console.log(`[dubizzle] ${cars.length} cars`);
+    return cars;
+  } catch (e) {
+    console.log('[dubizzle] error:', e.message);
+    return [];
+  }
+}
+
+// ===== YallaMotor =====
+async function searchYallaMotor(brandKey, modelFilter, city) {
+  try {
+    const brandSlug = brandKey.replace(/ /g, '-');
+    const baseUrl = `https://uae.yallamotor.com/used-cars/${brandSlug}`;
+    const response = await axios.get(baseUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
+      timeout: 20000
+    });
+
+    const html = response.data;
+    const cars = [];
+
+    // استخراج من Next.js __NEXT_DATA__
+    const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+    if (nextDataMatch) {
+      try {
+        const nextData = JSON.parse(nextDataMatch[1]);
+        const listings = nextData?.props?.pageProps?.listings ||
+                         nextData?.props?.pageProps?.cars ||
+                         nextData?.props?.pageProps?.data?.listings || [];
+        listings.forEach(car => {
+          const name = car.title || car.name || `${car.make || ''} ${car.model || ''} ${car.year || ''}`.trim();
+          cars.push({
+            name,
+            price: car.price || 0,
+            city: car.emirate || car.city || city || '',
+            year: car.year || null,
+            km: car.mileage || car.kilometers || null,
+            link: car.url ? `https://uae.yallamotor.com${car.url}` : '',
+            image: car.main_photo || car.photo || '',
+            source: 'YallaMotor',
+          });
+        });
+      } catch (e) {}
+    }
+
+    let filtered = cars.filter(c => c.link);
+    if (modelFilter) filtered = filtered.filter(c => c.name?.toLowerCase().includes(modelFilter));
+    console.log(`[yallamotor] ${filtered.length} cars`);
+    return filtered;
+  } catch (e) {
+    console.log('[yallamotor] error:', e.message);
+    return [];
+  }
+}
+
+// ===== DubiCars =====
+async function searchDubiCars(brandKey, modelFilter, city) {
+  try {
+    const brandSlug = brandKey.replace(/ /g, '-');
+    const baseUrl = `https://www.dubicars.com/used/${brandSlug}-for-sale-in-uae.html`;
+    const response = await axios.get(baseUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
+      timeout: 20000
+    });
+
+    const html = response.data;
+    const cars = [];
+
+    // استخراج من Next.js __NEXT_DATA__
+    const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+    if (nextDataMatch) {
+      try {
+        const nextData = JSON.parse(nextDataMatch[1]);
+        const listings = nextData?.props?.pageProps?.listings ||
+                         nextData?.props?.pageProps?.vehicles ||
+                         nextData?.props?.pageProps?.data || [];
+        const items = Array.isArray(listings) ? listings : [];
+        items.forEach(car => {
+          const name = car.title || car.name || `${car.make || ''} ${car.model || ''} ${car.year || ''}`.trim();
+          const yearMatch = name.match(/\b(19|20)\d{2}\b/);
+          cars.push({
+            name,
+            price: car.price || car.asking_price || 0,
+            city: car.emirate || car.city || city || '',
+            year: car.year || (yearMatch ? parseInt(yearMatch[0]) : null),
+            km: car.mileage || car.kilometers || null,
+            link: car.url ? `https://www.dubicars.com${car.url}` : (car.link || ''),
+            image: car.main_photo || car.photo || car.image || '',
+            source: 'DubiCars',
+          });
+        });
+      } catch (e) {}
+    }
+
+    let filtered = cars.filter(c => c.link);
+    if (modelFilter) filtered = filtered.filter(c => c.name?.toLowerCase().includes(modelFilter));
+    console.log(`[dubicars] ${filtered.length} cars`);
+    return filtered;
+  } catch (e) {
+    console.log('[dubicars] error:', e.message);
+    return [];
+  }
+}
+
+// ===== OpenSooq =====
+async function searchOpenSooq(brandKey, modelFilter, city) {
+  try {
+    const searchQuery = modelFilter ? `${brandKey} ${modelFilter}` : brandKey;
+    const baseUrl = `https://ae.opensooq.com/en/search?term=${encodeURIComponent(searchQuery)}&subcategory_id=1`;
+
+    const response = await axios.get(baseUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/html, */*',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
+      timeout: 20000
+    });
+
+    const html = response.data;
+    const cars = [];
+
+    // استخراج من Next.js __NEXT_DATA__
+    const nextDataMatch = html.match ? html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/) : null;
+    if (nextDataMatch) {
+      try {
+        const nextData = JSON.parse(nextDataMatch[1]);
+        const listings = nextData?.props?.pageProps?.posts ||
+                         nextData?.props?.pageProps?.listings || [];
+        listings.forEach(post => {
+          const name = post.title || post.name || '';
+          const yearMatch = name.match(/\b(19|20)\d{2}\b/);
+          cars.push({
+            name,
+            price: post.price || 0,
+            city: post.city_name || post.city || city || '',
+            year: yearMatch ? parseInt(yearMatch[0]) : null,
+            km: post.mileage || null,
+            link: post.url ? `https://ae.opensooq.com${post.url}` : (post.absolute_url || ''),
+            image: post.main_photo || post.image || '',
+            source: 'OpenSooq',
+          });
+        });
+      } catch (e) {}
+    }
+
+    let filtered = cars.filter(c => c.link);
+    if (modelFilter) filtered = filtered.filter(c => c.name?.toLowerCase().includes(modelFilter));
+    console.log(`[opensooq] ${filtered.length} cars`);
+    return filtered;
+  } catch (e) {
+    console.log('[opensooq] error:', e.message);
+    return [];
+  }
+}
+
+// ===== البحث في كل المنصات =====
+async function searchAllPlatforms(q, city) {
+  const searchKeyword = carNameMap[q] || q;
   const parts = searchKeyword.toLowerCase().split(' ');
   let brandKey = searchKeyword.toLowerCase();
   let modelFilter = null;
@@ -125,59 +320,35 @@ async function searchCarsData(q, city) {
 
   const brandSlug = brandSlugMap[brandKey] || brandKey.replace(/ /g, '-');
   const cityDomain = city ? (cityDomainMap[city] || 'dubai') : 'dubai';
-  const baseUrl = `https://${cityDomain}.dubizzle.com/motors/used-cars/${brandSlug}/`;
 
   console.log(`[search] brand=${brandSlug} model=${modelFilter} city=${cityDomain}`);
 
-  const [page1, page2, page3] = await Promise.all([
-    fetchPage(baseUrl),
-    fetchPage(baseUrl + '?page=2'),
-    fetchPage(baseUrl + '?page=3'),
+  const [dubizzleRes, yallaRes, dubiCarsRes, openSooqRes] = await Promise.allSettled([
+    searchDubizzle(brandSlug, cityDomain, modelFilter),
+    searchYallaMotor(brandKey, modelFilter, city),
+    searchDubiCars(brandKey, modelFilter, city),
+    searchOpenSooq(brandKey, modelFilter, city),
   ]);
 
-  const rawData = [...page1, ...page2, ...page3];
-  console.log(`[search] total raw: ${rawData.length}`);
-
-  let cars = rawData.map(car => {
-    const nameText = car.name?.en || car.name || '';
-    const yearMatch = nameText.match(/\b(19|20)\d{2}\b/);
-    const year = yearMatch ? parseInt(yearMatch[0]) : null;
-    const link = car.absolute_url?.en || car.absolute_url || '';
-    return {
-      name: nameText,
-      price: car.price || 0,
-      city: car.site?.en || car.city || '',
-      year,
-      km: car.kilometers || car.mileage || null,
-      color: car.color || '',
-      link,
-      image: car.photos?.thumb || car.photo_thumbnails?.[0] || '',
-      evaluation: null,
-    };
-  });
-
-  cars = cars.filter(c => c.link?.toLowerCase().includes('/motors/used-cars/'));
+  const allCars = [
+    ...(dubizzleRes.status === 'fulfilled' ? dubizzleRes.value : []),
+    ...(yallaRes.status === 'fulfilled' ? yallaRes.value : []),
+    ...(dubiCarsRes.status === 'fulfilled' ? dubiCarsRes.value : []),
+    ...(openSooqRes.status === 'fulfilled' ? openSooqRes.value : []),
+  ];
 
   const seen = new Set();
-  cars = cars.filter(c => {
-    if (seen.has(c.link)) return false;
+  const unique = allCars.filter(c => {
+    if (!c.link || seen.has(c.link)) return false;
     seen.add(c.link);
     return true;
   });
 
-  if (modelFilter) {
-    cars = cars.filter(c => {
-      const nameLower = c.name?.toLowerCase() || '';
-      const linkLower = c.link?.toLowerCase() || '';
-      return nameLower.includes(modelFilter) || linkLower.includes(modelFilter.replace(/ /g, '-'));
-    });
-    console.log(`[search] after model filter (${modelFilter}): ${cars.length}`);
-  }
-
-  return cars;
+  console.log(`[search] total: ${unique.length} cars from all platforms`);
+  return unique;
 }
 
-// Cron كل 30 دقيقة
+// ===== Cron كل 30 دقيقة =====
 cron.schedule('*/30 * * * *', async () => {
   console.log('[cron] Checking saved searches...');
   try {
@@ -189,10 +360,9 @@ cron.schedule('*/30 * * * *', async () => {
     for (const searchDoc of searchesSnap.docs) {
       const search = searchDoc.data();
       try {
-        const cars = await searchCarsData(search.brand, search.city);
+        const cars = await searchAllPlatforms(search.brand, search.city);
         const newCars = cars.filter(c => {
-          const linkId = c.link?.split('---')[1]?.replace('/', '') || '';
-          return linkId && !(search.seenLinks || []).includes(linkId);
+          return c.link && !(search.seenLinks || []).includes(c.link);
         });
 
         if (newCars.length > 0) {
@@ -207,36 +377,26 @@ cron.schedule('*/30 * * * *', async () => {
               });
             } catch (e) { console.log('FCM error:', e.message); }
           }
-
-          const newSeenLinks = [
-            ...(search.seenLinks || []),
-            ...newCars.map(c => c.link?.split('---')[1]?.replace('/', '') || '')
-          ].slice(-100);
-
-          await db.collection('searches').doc(searchDoc.id).update({
-            seenLinks: newSeenLinks,
-            lastChecked: Date.now(),
-          });
+          const newSeenLinks = [...(search.seenLinks || []), ...newCars.map(c => c.link)].slice(-100);
+          await db.collection('searches').doc(searchDoc.id).update({ seenLinks: newSeenLinks, lastChecked: Date.now() });
         }
       } catch (e) { console.log(`[cron] Error for ${search.brand}:`, e.message); }
     }
   } catch (e) { console.log('[cron] Error:', e.message); }
 });
 
+// ===== Routes =====
 app.get('/search', async (req, res) => {
   const { q, minPrice, maxPrice, city, yearFrom, yearTo, kmFrom, kmTo } = req.query;
   if (!q) return res.json([]);
-
   try {
-    let cars = await searchCarsData(q, city);
-
+    let cars = await searchAllPlatforms(q, city);
     if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
     if (maxPrice) cars = cars.filter(c => c.price <= parseInt(maxPrice));
     if (yearFrom) cars = cars.filter(c => c.year && c.year >= parseInt(yearFrom));
     if (yearTo) cars = cars.filter(c => c.year && c.year <= parseInt(yearTo));
     if (kmFrom) cars = cars.filter(c => c.km && c.km >= parseInt(kmFrom));
     if (kmTo) cars = cars.filter(c => c.km && c.km <= parseInt(kmTo));
-
     console.log(`[search] final: ${cars.length} cars`);
     res.json(cars);
   } catch (error) {
@@ -268,7 +428,7 @@ app.get('/evaluate', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.json({ status: 'Skoop API is running 🚀' });
+  res.json({ status: 'Skoop API is running 🚀', platforms: ['Dubizzle', 'YallaMotor', 'DubiCars', 'OpenSooq'] });
 });
 
 app.listen(PORT, () => {
