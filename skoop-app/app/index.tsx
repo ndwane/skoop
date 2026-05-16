@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
-  StyleSheet, ActivityIndicator, ScrollView, Modal, SafeAreaView, Alert, Linking
+  StyleSheet, ActivityIndicator, ScrollView, Modal, SafeAreaView, Alert, Linking, Image
 } from 'react-native';
 import { db, collection, addDoc, getDocs, deleteDoc, doc } from '../firebase';
 import { registerForPushNotifications, setupNotificationHandler } from '../notifications';
@@ -322,13 +322,7 @@ export default function Index() {
     setSelectedColor('');
   };
 
-  const activeFiltersCount = [
-    minPrice || maxPrice,
-    selectedCity,
-    yearFrom || yearTo,
-    kmFrom || kmTo,
-    selectedColor
-  ].filter(Boolean).length;
+  const activeFiltersCount = [minPrice || maxPrice, selectedCity, yearFrom || yearTo, kmFrom || kmTo, selectedColor].filter(Boolean).length;
 
   const getEvalColor = (ev) => {
     if (!ev) return '#999';
@@ -397,6 +391,13 @@ export default function Index() {
         contentContainerStyle={{ paddingBottom: 80, paddingHorizontal: 20 }}
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.card} onPress={() => openListing(item.link)}>
+            {item.image ? (
+              <Image
+                source={{ uri: item.image }}
+                style={styles.carImage}
+                resizeMode="cover"
+              />
+            ) : null}
             <Text style={styles.carName}>{item.name}</Text>
             <Text style={styles.carPrice}>{item.price > 0 ? `AED ${item.price?.toLocaleString()}` : t.contactForPrice}</Text>
             {item.evaluation ? (
@@ -626,17 +627,18 @@ const styles = StyleSheet.create({
   emptyIcon: { fontSize: 60, marginBottom: 16 },
   emptyTitle: { fontSize: 20, fontWeight: 'bold', color: '#1E1E2E', marginBottom: 8 },
   emptySubtitle: { fontSize: 14, color: '#888', textAlign: 'center', lineHeight: 22 },
-  card: { backgroundColor: 'white', marginBottom: 12, borderRadius: 16, padding: 16, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, elevation: 3 },
-  carName: { color: '#1E1E2E', fontSize: 15, fontWeight: 'bold', marginBottom: 6, textAlign: 'right' },
-  carPrice: { color: '#6366F1', fontSize: 20, fontWeight: 'bold', textAlign: 'right', marginBottom: 10 },
-  evalBox: { borderRadius: 10, padding: 10, marginBottom: 10 },
+  card: { backgroundColor: 'white', marginBottom: 12, borderRadius: 16, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, elevation: 3 },
+  carImage: { width: '100%', height: 180 },
+  carName: { color: '#1E1E2E', fontSize: 15, fontWeight: 'bold', marginBottom: 6, textAlign: 'right', paddingHorizontal: 16, paddingTop: 12 },
+  carPrice: { color: '#6366F1', fontSize: 20, fontWeight: 'bold', textAlign: 'right', marginBottom: 10, paddingHorizontal: 16 },
+  evalBox: { borderRadius: 10, padding: 10, marginBottom: 10, marginHorizontal: 16 },
   evalText: { fontSize: 13, fontWeight: '600', textAlign: 'right', lineHeight: 20 },
-  evalBoxLoading: { backgroundColor: '#F3F4F6', borderRadius: 10, padding: 10, marginBottom: 10 },
+  evalBoxLoading: { backgroundColor: '#F3F4F6', borderRadius: 10, padding: 10, marginBottom: 10, marginHorizontal: 16 },
   evalLoadingText: { color: '#999', fontSize: 13, textAlign: 'right' },
-  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4, paddingHorizontal: 16 },
   detailChip: { backgroundColor: '#F3F4F6', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
   detailChipText: { color: '#666', fontSize: 12 },
-  tapHint: { color: '#CCC', fontSize: 11, textAlign: 'left', marginTop: 10 },
+  tapHint: { color: '#CCC', fontSize: 11, textAlign: 'left', marginTop: 10, paddingHorizontal: 16, paddingBottom: 12 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#1E1E2E', marginBottom: 16, textAlign: 'right' },
   savedCard: { backgroundColor: 'white', borderRadius: 16, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, elevation: 3 },
   savedCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
