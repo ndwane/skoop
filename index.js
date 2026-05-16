@@ -126,7 +126,7 @@ async function searchCarsData(q, city) {
 
   const brandSlug = brandSlugMap[brandKey] || brandKey.replace(/ /g, '-');
   const cityDomain = city ? (cityDomainMap[city] || 'dubai') : 'dubai';
-  const baseUrl = `https://${cityDomain}.dubizzle.com/motors/used-cars/${brandSlug}/`;
+ const baseUrl = `https://${cityDomain}.dubizzle.com/motors/used-cars/${brandSlug}/`;
 
   console.log(`[search] brand=${brandSlug} model=${modelFilter} city=${cityDomain}`);
 
