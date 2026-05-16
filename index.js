@@ -80,7 +80,8 @@ async function evaluatePrice(carName, price) {
 أعطني تحليل قصير جداً (جملة واحدة أو جملتين) يشمل:
 - هل السعر رخيص أو معقول أو غالي مقارنة بالسوق
 - سبب واحد للشراء أو التحذير
-الرد بالعربي فقط، قصير ومباشر، بدون أي رموز مثل ** أو # أو markdown.    }]
+الرد بالعربي فقط، قصير ومباشر، بدون أي رموز مثل ** أو # أو markdown.`
+    }]
   });
   return message.content[0].text.trim();
 }
@@ -109,12 +110,10 @@ async function fetchPage(url) {
 async function searchCarsData(q, city) {
   const searchKeyword = carNameMap[q] || q;
 
-  // استخرج الماركة والموديل
   const parts = searchKeyword.toLowerCase().split(' ');
   let brandKey = searchKeyword.toLowerCase();
   let modelFilter = null;
 
-  // ابحث عن أطول ماركة موجودة في البداية
   for (let i = parts.length; i >= 1; i--) {
     const candidate = parts.slice(0, i).join(' ');
     if (brandSlugMap[candidate]) {
@@ -126,7 +125,7 @@ async function searchCarsData(q, city) {
 
   const brandSlug = brandSlugMap[brandKey] || brandKey.replace(/ /g, '-');
   const cityDomain = city ? (cityDomainMap[city] || 'dubai') : 'dubai';
- const baseUrl = `https://${cityDomain}.dubizzle.com/motors/used-cars/${brandSlug}/`;
+  const baseUrl = `https://${cityDomain}.dubizzle.com/motors/used-cars/${brandSlug}/`;
 
   console.log(`[search] brand=${brandSlug} model=${modelFilter} city=${cityDomain}`);
 
@@ -157,10 +156,8 @@ async function searchCarsData(q, city) {
     };
   });
 
-  // فلتر سيارات للبيع فقط
   cars = cars.filter(c => c.link?.toLowerCase().includes('/motors/used-cars/'));
 
-  // إزالة المكررات
   const seen = new Set();
   cars = cars.filter(c => {
     if (seen.has(c.link)) return false;
@@ -168,7 +165,6 @@ async function searchCarsData(q, city) {
     return true;
   });
 
-  // فلتر الموديل
   if (modelFilter) {
     cars = cars.filter(c => {
       const nameLower = c.name?.toLowerCase() || '';
