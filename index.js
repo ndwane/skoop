@@ -18,9 +18,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // Firebase Admin
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
+admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const db = admin.firestore();
 
 const cityDomainMap = {
@@ -38,21 +36,26 @@ const brandSlugMap = {
   'toyota': 'toyota', 'nissan': 'nissan', 'honda': 'honda',
   'mercedes': 'mercedes-benz', 'bmw': 'bmw', 'lexus': 'lexus',
   'kia': 'kia', 'hyundai': 'hyundai', 'ford': 'ford',
-  'chevrolet': 'chevrolet', 'jeep': 'jeep', 'range rover': 'land-rover',
-  'land rover': 'land-rover', 'porsche': 'porsche', 'audi': 'audi',
-  'volkswagen': 'volkswagen', 'mitsubishi': 'mitsubishi', 'suzuki': 'suzuki',
-  'mazda': 'mazda', 'infiniti': 'infiniti', 'tesla': 'tesla',
-  'lamborghini': 'lamborghini', 'ferrari': 'ferrari', 'bentley': 'bentley',
-  'rolls royce': 'rolls-royce', 'maserati': 'maserati', 'jaguar': 'jaguar',
-  'volvo': 'volvo', 'subaru': 'subaru', 'mini': 'mini',
-  'cadillac': 'cadillac', 'lincoln': 'lincoln', 'dodge': 'dodge',
-  'gmc': 'gmc', 'hummer': 'hummer', 'genesis': 'genesis',
-  'byd': 'byd', 'haval': 'haval', 'chery': 'chery',
-  'geely': 'geely', 'mg': 'mg', 'mclaren': 'mclaren',
-  'aston martin': 'aston-martin', 'alfa romeo': 'alfa-romeo',
-  'fiat': 'fiat', 'peugeot': 'peugeot', 'renault': 'renault',
-  'opel': 'opel', 'daihatsu': 'daihatsu', 'isuzu': 'isuzu',
-  'chrysler': 'chrysler', 'bugatti': 'bugatti',
+  'chevrolet': 'chevrolet', 'jeep': 'jeep',
+  'range rover': 'land-rover', 'land rover': 'land-rover',
+  'porsche': 'porsche', 'audi': 'audi', 'volkswagen': 'volkswagen',
+  'mitsubishi': 'mitsubishi', 'suzuki': 'suzuki', 'mazda': 'mazda',
+  'infiniti': 'infiniti', 'tesla': 'tesla', 'lamborghini': 'lamborghini',
+  'ferrari': 'ferrari', 'bentley': 'bentley', 'rolls royce': 'rolls-royce',
+  'maserati': 'maserati', 'jaguar': 'jaguar', 'volvo': 'volvo',
+  'subaru': 'subaru', 'mini': 'mini', 'cadillac': 'cadillac',
+  'lincoln': 'lincoln', 'dodge': 'dodge', 'gmc': 'gmc',
+  'hummer': 'hummer', 'genesis': 'genesis', 'byd': 'byd',
+  'haval': 'haval', 'chery': 'chery', 'geely': 'geely', 'mg': 'mg',
+  'mclaren': 'mclaren', 'aston martin': 'aston-martin',
+  'alfa romeo': 'alfa-romeo', 'fiat': 'fiat', 'peugeot': 'peugeot',
+  'renault': 'renault', 'opel': 'opel', 'daihatsu': 'daihatsu',
+  'isuzu': 'isuzu', 'chrysler': 'chrysler', 'bugatti': 'bugatti',
+  'honda motorcycle': 'honda', 'yamaha motorcycle': 'yamaha',
+  'kawasaki': 'kawasaki', 'suzuki motorcycle': 'suzuki',
+  'ktm': 'ktm', 'bmw motorcycle': 'bmw', 'ducati': 'ducati',
+  'harley davidson': 'harley-davidson', 'triumph': 'triumph',
+  'indian motorcycle': 'indian', 'aprilia': 'aprilia', 'vespa': 'vespa',
 };
 
 const carNameMap = {
@@ -104,10 +107,29 @@ async function fetchPage(url) {
   }
 }
 
-async function searchCarsData(keyword, city) {
-  const brandSlug = brandSlugMap[keyword.toLowerCase()] || keyword.toLowerCase().replace(/ /g, '-');
+async function searchCarsData(q, city) {
+  const searchKeyword = carNameMap[q] || q;
+
+  // استخرج الماركة والموديل
+  const parts = searchKeyword.toLowerCase().split(' ');
+  let brandKey = searchKeyword.toLowerCase();
+  let modelFilter = null;
+
+  // ابحث عن أطول ماركة موجودة في البداية
+  for (let i = parts.length; i >= 1; i--) {
+    const candidate = parts.slice(0, i).join(' ');
+    if (brandSlugMap[candidate]) {
+      brandKey = candidate;
+      modelFilter = parts.slice(i).join(' ') || null;
+      break;
+    }
+  }
+
+  const brandSlug = brandSlugMap[brandKey] || brandKey.replace(/ /g, '-');
   const cityDomain = city ? (cityDomainMap[city] || 'dubai') : 'dubai';
   const baseUrl = `https://${cityDomain}.dubizzle.com/motors/used-cars/${brandSlug}/`;
+
+  console.log(`[search] brand=${brandSlug} model=${modelFilter} city=${cityDomain}`);
 
   const [page1, page2, page3] = await Promise.all([
     fetchPage(baseUrl),
@@ -116,6 +138,7 @@ async function searchCarsData(keyword, city) {
   ]);
 
   const rawData = [...page1, ...page2, ...page3];
+  console.log(`[search] total raw: ${rawData.length}`);
 
   let cars = rawData.map(car => {
     const nameText = car.name?.en || car.name || '';
@@ -126,16 +149,19 @@ async function searchCarsData(keyword, city) {
       name: nameText,
       price: car.price || 0,
       city: car.site?.en || car.city || '',
-      year: year,
+      year,
       km: car.kilometers || car.mileage || null,
       color: car.color || '',
-      link: link,
+      link,
       image: car.photos?.thumb || car.photo_thumbnails?.[0] || '',
+      evaluation: null,
     };
   });
 
+  // فلتر سيارات للبيع فقط
   cars = cars.filter(c => c.link?.toLowerCase().includes('/motors/used-cars/'));
 
+  // إزالة المكررات
   const seen = new Set();
   cars = cars.filter(c => {
     if (seen.has(c.link)) return false;
@@ -143,36 +169,38 @@ async function searchCarsData(keyword, city) {
     return true;
   });
 
+  // فلتر الموديل
+  if (modelFilter) {
+    cars = cars.filter(c => {
+      const nameLower = c.name?.toLowerCase() || '';
+      const linkLower = c.link?.toLowerCase() || '';
+      return nameLower.includes(modelFilter) || linkLower.includes(modelFilter.replace(/ /g, '-'));
+    });
+    console.log(`[search] after model filter (${modelFilter}): ${cars.length}`);
+  }
+
   return cars;
 }
 
-// فحص الإشعارات كل 30 دقيقة
+// Cron كل 30 دقيقة
 cron.schedule('*/30 * * * *', async () => {
   console.log('[cron] Checking saved searches...');
   try {
     const searchesSnap = await db.collection('searches').get();
     const tokensSnap = await db.collection('tokens').get();
     const tokens = tokensSnap.docs.map(d => d.data().token).filter(Boolean);
-
     if (tokens.length === 0) return;
 
     for (const searchDoc of searchesSnap.docs) {
       const search = searchDoc.data();
-      const keyword = search.brand;
-      const city = search.city;
-
       try {
-        const cars = await searchCarsData(keyword, city);
-        const lastChecked = search.lastChecked || 0;
+        const cars = await searchCarsData(search.brand, search.city);
         const newCars = cars.filter(c => {
           const linkId = c.link?.split('---')[1]?.replace('/', '') || '';
-          return linkId && !search.seenLinks?.includes(linkId);
+          return linkId && !(search.seenLinks || []).includes(linkId);
         });
 
         if (newCars.length > 0) {
-          console.log(`[cron] Found ${newCars.length} new cars for ${keyword}`);
-
-          // إرسال إشعار لكل token
           for (const token of tokens) {
             try {
               await admin.messaging().send({
@@ -181,17 +209,10 @@ cron.schedule('*/30 * * * *', async () => {
                   title: `🚗 ${newCars.length} سيارة جديدة - ${search.brandLabel}`,
                   body: `${newCars[0].name} - AED ${newCars[0].price?.toLocaleString()}`,
                 },
-                data: {
-                  brand: keyword,
-                  count: String(newCars.length),
-                }
               });
-            } catch (e) {
-              console.log('FCM error:', e.message);
-            }
+            } catch (e) { console.log('FCM error:', e.message); }
           }
 
-          // تحديث الـ seenLinks
           const newSeenLinks = [
             ...(search.seenLinks || []),
             ...newCars.map(c => c.link?.split('---')[1]?.replace('/', '') || '')
@@ -202,13 +223,9 @@ cron.schedule('*/30 * * * *', async () => {
             lastChecked: Date.now(),
           });
         }
-      } catch (e) {
-        console.log(`[cron] Error for ${keyword}:`, e.message);
-      }
+      } catch (e) { console.log(`[cron] Error for ${search.brand}:`, e.message); }
     }
-  } catch (e) {
-    console.log('[cron] Error:', e.message);
-  }
+  } catch (e) { console.log('[cron] Error:', e.message); }
 });
 
 app.get('/search', async (req, res) => {
@@ -216,8 +233,7 @@ app.get('/search', async (req, res) => {
   if (!q) return res.json([]);
 
   try {
-    const searchKeyword = carNameMap[q] || q;
-    let cars = await searchCarsData(searchKeyword, city);
+    let cars = await searchCarsData(q, city);
 
     if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
     if (maxPrice) cars = cars.filter(c => c.price <= parseInt(maxPrice));
@@ -234,7 +250,6 @@ app.get('/search', async (req, res) => {
   }
 });
 
-// حفظ token الجوال
 app.post('/token', async (req, res) => {
   const { token } = req.body;
   if (!token) return res.status(400).json({ error: 'No token' });

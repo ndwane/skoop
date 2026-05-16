@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
-  StyleSheet, ActivityIndicator, Linking, ScrollView, Modal, SafeAreaView, Alert
+  StyleSheet, ActivityIndicator, ScrollView, Modal, SafeAreaView, Alert, Linking
 } from 'react-native';
 import { db, collection, addDoc, getDocs, deleteDoc, doc } from '../firebase';
+import { registerForPushNotifications, setupNotificationHandler } from '../notifications';
 
 const API_URL = 'https://skoop-production.up.railway.app';
 
@@ -51,6 +52,8 @@ const TRANSLATIONS = {
     errorTitle: 'خطأ',
     errorSave: 'لم يتم الحفظ',
     allCities: 'الكل',
+    openAd: 'فتح الإعلان',
+    close: '✕ إغلاق',
   },
   en: {
     appName: 'Scoop',
@@ -95,23 +98,14 @@ const TRANSLATIONS = {
     errorTitle: 'Error',
     errorSave: 'Could not save',
     allCities: 'All',
+    openAd: 'Open Listing',
+    close: '✕ Close',
   }
 };
 
 const CITIES = {
   ar: ['الكل', 'دبي', 'أبوظبي', 'الشارقة', 'عجمان', 'رأس الخيمة', 'الفجيرة', 'أم القيوين', 'العين'],
   en: ['All', 'Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Ras Al Khaimah', 'Fujairah', 'Umm Al Quwain', 'Al Ain'],
-};
-
-const CITY_MAP = {
-  'دبي': 'dubai', 'Dubai': 'dubai',
-  'أبوظبي': 'abudhabi', 'Abu Dhabi': 'abudhabi',
-  'الشارقة': 'sharjah', 'Sharjah': 'sharjah',
-  'عجمان': 'ajman', 'Ajman': 'ajman',
-  'رأس الخيمة': 'rak', 'Ras Al Khaimah': 'rak',
-  'الفجيرة': 'fujairah', 'Fujairah': 'fujairah',
-  'أم القيوين': 'uaq', 'Umm Al Quwain': 'uaq',
-  'العين': 'alain', 'Al Ain': 'alain',
 };
 
 const BRANDS_DATA = {
@@ -158,7 +152,6 @@ const BRANDS_DATA = {
     { label: 'سوزوكي / Suzuki', value: 'suzuki', models: ['Vitara', 'Swift', 'Jimny', 'Ignis', 'Baleno', 'Ertiga', 'Ciaz', 'Grand Vitara'] },
     { label: 'ماكلارين / McLaren', value: 'mclaren', models: ['720S', '570S', 'Artura', 'GT', 'P1', 'Senna'] },
     { label: 'استون مارتن / Aston Martin', value: 'aston martin', models: ['DB11', 'Vantage', 'DBS', 'DBX', 'Valkyrie'] },
-    { label: 'لوتس / Lotus', value: 'lotus', models: ['Emira', 'Eletre', 'Evija'] },
     { label: 'الفا روميو / Alfa Romeo', value: 'alfa romeo', models: ['Giulia', 'Stelvio', 'Tonale', 'Giulietta', '4C'] },
     { label: 'فيات / Fiat', value: 'fiat', models: ['500', 'Panda', 'Tipo', 'Doblo', 'Bravo'] },
     { label: 'بيجو / Peugeot', value: 'peugeot', models: ['208', '308', '408', '508', '2008', '3008', '5008'] },
@@ -214,10 +207,10 @@ export default function Index() {
   const [showFilters, setShowFilters] = useState(false);
   const [savedSearches, setSavedSearches] = useState([]);
   const [loadingSaved, setLoadingSaved] = useState(false);
+  const [selectedCity, setSelectedCity] = useState('');
 
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
-  const [selectedCity, setSelectedCity] = useState(cities[0]);
   const [yearFrom, setYearFrom] = useState('');
   const [yearTo, setYearTo] = useState('');
   const [kmFrom, setKmFrom] = useState('');
@@ -234,7 +227,11 @@ export default function Index() {
   const models = selectedBrand ? (brands.find(b => b.value === selectedBrand.value)?.models || []) : [];
   const selectedTypeData = vehicleTypes.find(v => v.id === selectedType);
 
-  useEffect(() => { loadSavedSearches(); }, []);
+  useEffect(() => {
+    loadSavedSearches();
+    setupNotificationHandler();
+    registerForPushNotifications();
+  }, []);
 
   const loadSavedSearches = async () => {
     setLoadingSaved(true);
@@ -253,7 +250,7 @@ export default function Index() {
         brandLabel: selectedBrand.label,
         model: selectedModel || null,
         type: selectedType,
-        city: selectedCity,
+        city: selectedCity || null,
         minPrice: minPrice || null,
         maxPrice: maxPrice || null,
         yearFrom: yearFrom || null,
@@ -274,6 +271,16 @@ export default function Index() {
     } catch (e) {}
   };
 
+  const openListing = (link) => {
+    if (link) {
+      const fixedLink = link
+        .replace('dubai.dubizzle.com', 'uae.dubizzle.com')
+        .replace('sharjah.dubizzle.com', 'uae.dubizzle.com')
+        .replace('abudhabi.dubizzle.com', 'uae.dubizzle.com');
+      Linking.openURL(fixedLink);
+    }
+  };
+
   const searchCars = async (keyword) => {
     if (!keyword) return;
     setLoading(true);
@@ -285,7 +292,7 @@ export default function Index() {
       const params = new URLSearchParams({ q: keyword });
       if (minPrice) params.append('minPrice', minPrice);
       if (maxPrice) params.append('maxPrice', maxPrice);
-      if (selectedCity !== cities[0]) params.append('city', selectedCity);
+      if (selectedCity) params.append('city', selectedCity);
       if (yearFrom) params.append('yearFrom', yearFrom);
       if (yearTo) params.append('yearTo', yearTo);
       if (kmFrom) params.append('kmFrom', kmFrom);
@@ -309,18 +316,24 @@ export default function Index() {
 
   const resetFilters = () => {
     setMinPrice(''); setMaxPrice('');
-    setSelectedCity(cities[0]);
+    setSelectedCity('');
     setYearFrom(''); setYearTo('');
     setKmFrom(''); setKmTo('');
     setSelectedColor('');
   };
 
-  const activeFiltersCount = [minPrice || maxPrice, selectedCity !== cities[0], yearFrom || yearTo, kmFrom || kmTo, selectedColor].filter(Boolean).length;
+  const activeFiltersCount = [
+    minPrice || maxPrice,
+    selectedCity,
+    yearFrom || yearTo,
+    kmFrom || kmTo,
+    selectedColor
+  ].filter(Boolean).length;
 
   const getEvalColor = (ev) => {
     if (!ev) return '#999';
-    if (ev.includes('رخيص') || ev.toLowerCase().includes('cheap') || ev.toLowerCase().includes('good deal')) return '#22C55E';
-    if (ev.includes('غالي') || ev.toLowerCase().includes('expensive') || ev.toLowerCase().includes('overpriced')) return '#EF4444';
+    if (ev.includes('رخيص') || ev.toLowerCase().includes('cheap')) return '#22C55E';
+    if (ev.includes('غالي') || ev.toLowerCase().includes('expensive')) return '#EF4444';
     return '#F59E0B';
   };
   const getEvalBg = (ev) => {
@@ -347,9 +360,9 @@ export default function Index() {
 
       {activeFiltersCount > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.activeFilters}>
-          {selectedCity !== cities[0] && <View style={styles.activeChip}><Text style={styles.activeChipText}>📍 {selectedCity}</Text></View>}
-          {(minPrice || maxPrice) && <View style={styles.activeChip}><Text style={styles.activeChipText}>💰 {minPrice || '0'} - {maxPrice || '∞'}</Text></View>}
-          {(yearFrom || yearTo) && <View style={styles.activeChip}><Text style={styles.activeChipText}>📅 {yearFrom} - {yearTo}</Text></View>}
+          {selectedCity ? <View style={styles.activeChip}><Text style={styles.activeChipText}>📍 {selectedCity}</Text></View> : null}
+          {(minPrice || maxPrice) ? <View style={styles.activeChip}><Text style={styles.activeChipText}>💰 {minPrice || '0'} - {maxPrice || '∞'}</Text></View> : null}
+          {(yearFrom || yearTo) ? <View style={styles.activeChip}><Text style={styles.activeChipText}>📅 {yearFrom} - {yearTo}</Text></View> : null}
           <TouchableOpacity style={styles.clearChip} onPress={resetFilters}><Text style={styles.clearChipText}>✕</Text></TouchableOpacity>
         </ScrollView>
       )}
@@ -383,7 +396,7 @@ export default function Index() {
         keyExtractor={(_, i) => i.toString()}
         contentContainerStyle={{ paddingBottom: 80, paddingHorizontal: 20 }}
         renderItem={({ item }) => (
-          <TouchableOpacity style={styles.card} onPress={() => item.link && Linking.openURL(item.link)}>
+          <TouchableOpacity style={styles.card} onPress={() => openListing(item.link)}>
             <Text style={styles.carName}>{item.name}</Text>
             <Text style={styles.carPrice}>{item.price > 0 ? `AED ${item.price?.toLocaleString()}` : t.contactForPrice}</Text>
             {item.evaluation ? (
@@ -427,9 +440,9 @@ export default function Index() {
                   <Text style={styles.savedCardTitle}>{item.brandLabel} {item.model || ''}</Text>
                 </View>
                 <View style={styles.chipsRow}>
-                  {item.city && item.city !== cities[0] && <View style={styles.detailChip}><Text style={styles.detailChipText}>📍 {item.city}</Text></View>}
-                  {(item.minPrice || item.maxPrice) && <View style={styles.detailChip}><Text style={styles.detailChipText}>💰 {item.minPrice || '0'} - {item.maxPrice || '∞'}</Text></View>}
-                  {(item.yearFrom || item.yearTo) && <View style={styles.detailChip}><Text style={styles.detailChipText}>📅 {item.yearFrom} - {item.yearTo}</Text></View>}
+                  {item.city ? <View style={styles.detailChip}><Text style={styles.detailChipText}>📍 {item.city}</Text></View> : null}
+                  {(item.minPrice || item.maxPrice) ? <View style={styles.detailChip}><Text style={styles.detailChipText}>💰 {item.minPrice || '0'} - {item.maxPrice || '∞'}</Text></View> : null}
+                  {(item.yearFrom || item.yearTo) ? <View style={styles.detailChip}><Text style={styles.detailChipText}>📅 {item.yearFrom} - {item.yearTo}</Text></View> : null}
                 </View>
                 <TouchableOpacity style={styles.searchAgainBtn} onPress={() => {
                   setSelectedBrand({ value: item.brand, label: item.brandLabel });
@@ -450,7 +463,7 @@ export default function Index() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.langBtn} onPress={() => setLang(lang === 'ar' ? 'en' : 'ar')}>
+        <TouchableOpacity style={styles.langBtn} onPress={() => { setLang(lang === 'ar' ? 'en' : 'ar'); setSelectedCity(''); }}>
           <Text style={styles.langBtnText}>{lang === 'ar' ? 'En' : 'ع'}</Text>
         </TouchableOpacity>
         <Text style={styles.logo}>🔍 {t.appName}</Text>
@@ -477,7 +490,6 @@ export default function Index() {
         ))}
       </View>
 
-      {/* Picker Modal */}
       <Modal visible={showPicker} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
@@ -522,7 +534,6 @@ export default function Index() {
         </View>
       </Modal>
 
-      {/* Filters Modal */}
       <Modal visible={showFilters} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
@@ -557,7 +568,7 @@ export default function Index() {
               <Text style={styles.filterLabel}>{t.city}</Text>
               <View style={styles.chipsRow}>
                 {cities.map(city => (
-                  <TouchableOpacity key={city} style={[styles.chip, selectedCity === city && styles.chipActive]} onPress={() => setSelectedCity(city)}>
+                  <TouchableOpacity key={city} style={[styles.chip, selectedCity === city && styles.chipActive]} onPress={() => setSelectedCity(selectedCity === city ? '' : city)}>
                     <Text style={[styles.chipText, selectedCity === city && styles.chipTextActive]}>{city}</Text>
                   </TouchableOpacity>
                 ))}
