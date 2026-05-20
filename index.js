@@ -3,7 +3,6 @@ const express = require('express');
 const axios = require('axios');
 const Anthropic = require('@anthropic-ai/sdk');
 const admin = require('firebase-admin');
-const cron = require('node-cron');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -19,6 +18,28 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const db = admin.firestore();
+
+// ===== Smart Cache (30 دقيقة) =====
+const cache = new Map();
+const CACHE_TTL = 30 * 60 * 1000; // 30 دقيقة
+
+function getCacheKey(q, city, minPrice, maxPrice, yearFrom, yearTo, kmFrom, kmTo) {
+  return `${q}|${city||''}|${minPrice||''}|${maxPrice||''}|${yearFrom||''}|${yearTo||''}|${kmFrom||''}|${kmTo||''}`;
+}
+
+function getFromCache(key) {
+  const item = cache.get(key);
+  if (!item) return null;
+  if (Date.now() - item.time > CACHE_TTL) {
+    cache.delete(key);
+    return null;
+  }
+  return item.data;
+}
+
+function setCache(key, data) {
+  cache.set(key, { data, time: Date.now() });
+}
 
 const cityDomainMap = {
   'دبي': 'dubai', 'Dubai': 'dubai',
@@ -67,13 +88,6 @@ const carNameMap = {
   'مازدا': 'mazda', 'انفينيتي': 'infiniti',
 };
 
-// ===== حسابات السماسرة على Instagram =====
-const INSTAGRAM_ACCOUNTS = [
-  'dubizzle_cars_uae', 'yallamotor', 'carswitch',
-  'carzaty_uae', 'cars24_uae', 'uae_cars_sale',
-  'dubai_cars_market', 'abudhabi_cars', 'uae_used_cars', 'cars_uae_2024',
-];
-
 // ===== Claude تحليل السعر =====
 async function evaluatePrice(carName, price) {
   const message = await client.messages.create({
@@ -118,12 +132,9 @@ async function fetchDubizzlePage(url) {
 async function searchDubizzle(brandSlug, cityDomain, modelFilter) {
   try {
     const baseUrl = `https://${cityDomain}.dubizzle.com/motors/used-cars/${brandSlug}/`;
-    const [p1, p2, p3] = await Promise.all([
-      fetchDubizzlePage(baseUrl),
-      fetchDubizzlePage(baseUrl + '?page=2'),
-      fetchDubizzlePage(baseUrl + '?page=3'),
-    ]);
-    let cars = [...p1, ...p2, ...p3].map(car => {
+    // صفحة واحدة فقط لتوفير الطلبات
+    const p1 = await fetchDubizzlePage(baseUrl);
+    let cars = p1.map(car => {
       const nameText = car.name?.en || car.name || '';
       const yearMatch = nameText.match(/\b(19|20)\d{2}\b/);
       const link = car.absolute_url?.en || car.absolute_url || '';
@@ -138,6 +149,7 @@ async function searchDubizzle(brandSlug, cityDomain, modelFilter) {
         source: 'Dubizzle',
       };
     }).filter(c => c.link?.toLowerCase().includes('/motors/used-cars/'));
+
     if (modelFilter) {
       cars = cars.filter(c =>
         c.name?.toLowerCase().includes(modelFilter) ||
@@ -292,101 +304,7 @@ async function searchOpenSooq(brandKey, modelFilter, city) {
   }
 }
 
-// ===== Instagram Scraper (منفصل - endpoint خاص) =====
-async function searchInstagram(brandKey, modelFilter) {
-  try {
-    const APIFY_TOKEN = process.env.APIFY_API_TOKEN;
-    if (!APIFY_TOKEN) return [];
-
-    const directUrls = INSTAGRAM_ACCOUNTS.map(acc => `https://www.instagram.com/${acc}/`);
-
-    const runResponse = await axios.post(
-      'https://api.apify.com/v2/acts/apify~instagram-scraper/runs',
-      { directUrls, resultsType: 'posts', resultsLimit: 20 },
-      {
-        headers: { 'Authorization': `Bearer ${APIFY_TOKEN}`, 'Content-Type': 'application/json' },
-        timeout: 60000,
-      }
-    );
-
-    const runId = runResponse.data?.data?.id;
-    if (!runId) return [];
-    console.log(`[instagram] Run started: ${runId}`);
-
-    let status = 'RUNNING';
-    let attempts = 0;
-    while (status === 'RUNNING' && attempts < 12) {
-      await new Promise(r => setTimeout(r, 5000));
-      const statusRes = await axios.get(
-        `https://api.apify.com/v2/acts/apify~instagram-scraper/runs/${runId}`,
-        { headers: { 'Authorization': `Bearer ${APIFY_TOKEN}` } }
-      );
-      status = statusRes.data?.data?.status;
-      attempts++;
-    }
-
-    if (status !== 'SUCCEEDED') return [];
-
-    const resultsRes = await axios.get(
-      `https://api.apify.com/v2/acts/apify~instagram-scraper/runs/${runId}/dataset/items`,
-      { headers: { 'Authorization': `Bearer ${APIFY_TOKEN}` } }
-    );
-
-    const posts = resultsRes.data || [];
-    const cars = [];
-
-    for (const post of posts) {
-      try {
-        const caption = post.caption || '';
-        const imageUrl = post.displayUrl || post.thumbnailUrl || '';
-        const postUrl = post.url || `https://www.instagram.com/p/${post.shortCode}/`;
-        const account = post.ownerUsername || '';
-
-        const carKeywords = ['سيارة', 'car', 'للبيع', 'sale', 'درهم', 'aed', 'كيلو', 'km', 'موديل', 'model'];
-        const hasCarKeyword = carKeywords.some(k => caption.toLowerCase().includes(k.toLowerCase()));
-        if (!hasCarKeyword) continue;
-
-        const aiResponse = await client.messages.create({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 200,
-          messages: [{
-            role: 'user',
-            content: `أنت خبير سيارات. حلل هذا الإعلان من Instagram واستخرج بيانات السيارة:
-"${caption.substring(0, 500)}"
-أجب بـ JSON فقط: {"name":"اسم السيارة والموديل والسنة","price":0,"year":0,"km":0,"city":"المدينة","isCar":true}
-إذا ما في سيارة، اجعل isCar: false`
-          }]
-        });
-
-        let carData;
-        try {
-          const text = aiResponse.content[0].text.trim();
-          const jsonMatch = text.match(/\{[\s\S]*\}/);
-          if (jsonMatch) carData = JSON.parse(jsonMatch[0]);
-        } catch (e) { continue; }
-
-        if (!carData?.isCar || !carData?.name) continue;
-        if (brandKey && !carData.name.toLowerCase().includes(brandKey.toLowerCase())) continue;
-        if (modelFilter && !carData.name.toLowerCase().includes(modelFilter.toLowerCase())) continue;
-
-        cars.push({
-          name: carData.name, price: carData.price || 0,
-          year: carData.year || null, km: carData.km || null,
-          city: carData.city || '', link: postUrl,
-          image: imageUrl, source: 'Instagram', account: `@${account}`,
-        });
-      } catch (e) {}
-    }
-
-    console.log(`[instagram] ${cars.length} cars found`);
-    return cars;
-  } catch (e) {
-    console.log('[instagram] error:', e.message);
-    return [];
-  }
-}
-
-// ===== البحث في كل المنصات (بدون Instagram) =====
+// ===== البحث في كل المنصات =====
 async function searchAllPlatforms(q, city) {
   const searchKeyword = carNameMap[q] || q;
   const parts = searchKeyword.toLowerCase().split(' ');
@@ -432,84 +350,7 @@ async function searchAllPlatforms(q, city) {
   return unique;
 }
 
-// ===== Cron كل 30 دقيقة =====
-cron.schedule('*/30 * * * *', async () => {
-  console.log('[cron] Checking saved searches...');
-  try {
-    const searchesSnap = await db.collection('searches').get();
-    const tokensSnap = await db.collection('tokens').get();
-    const tokens = tokensSnap.docs.map(d => d.data().token).filter(Boolean);
-    if (tokens.length === 0) return;
-
-    for (const searchDoc of searchesSnap.docs) {
-      const search = searchDoc.data();
-      try {
-        const cars = await searchAllPlatforms(search.brand, search.city);
-        const newCars = cars.filter(c => c.link && !(search.seenLinks || []).includes(c.link));
-
-        if (newCars.length > 0) {
-          for (const token of tokens) {
-            try {
-              await admin.messaging().send({
-                token,
-                notification: {
-                  title: `🚗 ${newCars.length} سيارة جديدة - ${search.brandLabel}`,
-                  body: `${newCars[0].name} - AED ${newCars[0].price?.toLocaleString()}`,
-                },
-              });
-            } catch (e) { console.log('FCM error:', e.message); }
-          }
-          const newSeenLinks = [...(search.seenLinks || []), ...newCars.map(c => c.link)].slice(-100);
-          await db.collection('searches').doc(searchDoc.id).update({ seenLinks: newSeenLinks, lastChecked: Date.now() });
-        }
-      } catch (e) { console.log(`[cron] Error for ${search.brand}:`, e.message); }
-    }
-  } catch (e) { console.log('[cron] Error:', e.message); }
-});
-
-// ===== Routes =====
-app.get('/search', async (req, res) => {
-  const { q, minPrice, maxPrice, city, yearFrom, yearTo, kmFrom, kmTo } = req.query;
-  if (!q) return res.json([]);
-  try {
-    let cars = await searchAllPlatforms(q, city);
-    if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
-    if (maxPrice) cars = cars.filter(c => c.price <= parseInt(maxPrice));
-    if (yearFrom) cars = cars.filter(c => c.year && c.year >= parseInt(yearFrom));
-    if (yearTo) cars = cars.filter(c => c.year && c.year <= parseInt(yearTo));
-    if (kmFrom) cars = cars.filter(c => c.km && c.km >= parseInt(kmFrom));
-    if (kmTo) cars = cars.filter(c => c.km && c.km <= parseInt(kmTo));
-    console.log(`[search] final: ${cars.length} cars`);
-    res.json(cars);
-  } catch (error) {
-    console.log('Search error:', error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ===== Instagram endpoint منفصل =====
-app.get('/instagram', async (req, res) => {
-  const { q } = req.query;
-  if (!q) return res.json([]);
-  try {
-    const parts = q.toLowerCase().split(' ');
-    let brandKey = q.toLowerCase();
-    let modelFilter = null;
-    for (let i = parts.length; i >= 1; i--) {
-      const candidate = parts.slice(0, i).join(' ');
-      if (brandSlugMap[candidate]) {
-        brandKey = candidate;
-        modelFilter = parts.slice(i).join(' ') || null;
-        break;
-      }
-    }
-    const cars = await searchInstagram(brandKey, modelFilter);
-    res.json(cars);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
+// ===== Token =====
 app.post('/token', async (req, res) => {
   const { token } = req.body;
   if (!token) return res.status(400).json({ error: 'No token' });
@@ -521,6 +362,40 @@ app.post('/token', async (req, res) => {
   }
 });
 
+// ===== Search مع Smart Cache =====
+app.get('/search', async (req, res) => {
+  const { q, minPrice, maxPrice, city, yearFrom, yearTo, kmFrom, kmTo } = req.query;
+  if (!q) return res.json([]);
+
+  // تحقق من الـ Cache
+  const cacheKey = getCacheKey(q, city, minPrice, maxPrice, yearFrom, yearTo, kmFrom, kmTo);
+  const cached = getFromCache(cacheKey);
+  if (cached) {
+    console.log(`[cache] HIT for: ${cacheKey}`);
+    return res.json(cached);
+  }
+
+  try {
+    let cars = await searchAllPlatforms(q, city);
+    if (minPrice) cars = cars.filter(c => c.price >= parseInt(minPrice));
+    if (maxPrice) cars = cars.filter(c => c.price <= parseInt(maxPrice));
+    if (yearFrom) cars = cars.filter(c => c.year && c.year >= parseInt(yearFrom));
+    if (yearTo) cars = cars.filter(c => c.year && c.year <= parseInt(yearTo));
+    if (kmFrom) cars = cars.filter(c => c.km && c.km >= parseInt(kmFrom));
+    if (kmTo) cars = cars.filter(c => c.km && c.km <= parseInt(kmTo));
+
+    // احفظ في الـ Cache
+    setCache(cacheKey, cars);
+    console.log(`[cache] SET for: ${cacheKey} (${cars.length} cars)`);
+
+    res.json(cars);
+  } catch (error) {
+    console.log('Search error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===== Evaluate =====
 app.get('/evaluate', async (req, res) => {
   const { name, price } = req.query;
   try {
@@ -533,7 +408,11 @@ app.get('/evaluate', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.json({ status: 'Skoop API is running 🚀', platforms: ['Dubizzle', 'YallaMotor', 'DubiCars', 'OpenSooq', 'Instagram'] });
+  res.json({
+    status: 'Skoop API is running 🚀',
+    platforms: ['Dubizzle', 'YallaMotor', 'DubiCars', 'OpenSooq', 'Instagram'],
+    cache: `${cache.size} cached searches`
+  });
 });
 
 app.listen(PORT, () => {
