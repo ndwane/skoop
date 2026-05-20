@@ -85,10 +85,11 @@ const carNameMap = {
   'مازدا': 'mazda', 'انفينيتي': 'infiniti',
 };
 
+// ===== حسابات السماسرة على Instagram =====
 const INSTAGRAM_ACCOUNTS = [
-  'dubizzle_cars_uae', 'yallamotor', 'carswitch',
-  'carzaty_uae', 'cars24_uae', 'uae_cars_sale',
-  'dubai_cars_market', 'abudhabi_cars', 'uae_used_cars', 'cars_uae_2024',
+  'smsar1rak',
+  'sell',
+  'smsar__',
 ];
 
 // ===== Claude تحليل السعر =====
@@ -247,7 +248,7 @@ async function searchOpenSooq(brandKey, modelFilter, city) {
   } catch (e) { console.log('[opensooq] error:', e.message); return []; }
 }
 
-// ===== Instagram Scraper (منفصل) =====
+// ===== Instagram Scraper =====
 async function searchInstagram(brandKey, modelFilter) {
   try {
     const APIFY_TOKEN = process.env.APIFY_API_TOKEN;
@@ -256,7 +257,7 @@ async function searchInstagram(brandKey, modelFilter) {
     const directUrls = INSTAGRAM_ACCOUNTS.map(acc => `https://www.instagram.com/${acc}/`);
     const runResponse = await axios.post(
       'https://api.apify.com/v2/acts/apify~instagram-scraper/runs',
-      { directUrls, resultsType: 'posts', resultsLimit: 20 },
+      { directUrls, resultsType: 'posts', resultsLimit: 30 },
       { headers: { 'Authorization': `Bearer ${APIFY_TOKEN}`, 'Content-Type': 'application/json' }, timeout: 60000 }
     );
 
@@ -274,16 +275,18 @@ async function searchInstagram(brandKey, modelFilter) {
       );
       status = statusRes.data?.data?.status;
       attempts++;
+      console.log(`[instagram] Status: ${status} (${attempts})`);
     }
 
     if (status !== 'SUCCEEDED') return [];
 
     const resultsRes = await axios.get(
-      `https://api.apify.com/v2/acts/apify~instagram-scraper/runs/${runId}/dataset/items`,
+      `https://api.apify.com/v2/actor-runs/${runId}/dataset/items`,
       { headers: { 'Authorization': `Bearer ${APIFY_TOKEN}` } }
     );
 
     const posts = resultsRes.data || [];
+    console.log(`[instagram] Got ${posts.length} posts`);
     const cars = [];
 
     for (const post of posts) {
@@ -293,7 +296,7 @@ async function searchInstagram(brandKey, modelFilter) {
         const postUrl = post.url || `https://www.instagram.com/p/${post.shortCode}/`;
         const account = post.ownerUsername || '';
 
-        const carKeywords = ['سيارة', 'car', 'للبيع', 'sale', 'درهم', 'aed', 'كيلو', 'km', 'موديل', 'model'];
+        const carKeywords = ['سيارة', 'car', 'للبيع', 'sale', 'درهم', 'aed', 'كيلو', 'km', 'موديل', 'model', 'للتواصل', 'واتساب'];
         const hasCarKeyword = carKeywords.some(k => caption.toLowerCase().includes(k.toLowerCase()));
         if (!hasCarKeyword) continue;
 
@@ -320,6 +323,7 @@ async function searchInstagram(brandKey, modelFilter) {
           city: carData.city||'', link: postUrl,
           image: imageUrl, source: 'Instagram', account: `@${account}`,
         });
+        console.log(`[instagram] Found: ${carData.name} - AED ${carData.price}`);
       } catch (e) {}
     }
 
@@ -415,7 +419,7 @@ app.get('/search', async (req, res) => {
   }
 });
 
-// ===== Instagram endpoint منفصل =====
+// ===== Instagram endpoint منفصل مع Cache =====
 app.get('/instagram', async (req, res) => {
   const { q } = req.query;
   if (!q) return res.json([]);
@@ -463,6 +467,7 @@ app.get('/', (req, res) => {
   res.json({
     status: 'Skoop API is running 🚀',
     platforms: ['Dubizzle', 'YallaMotor', 'DubiCars', 'OpenSooq', 'Instagram'],
+    instagram_accounts: INSTAGRAM_ACCOUNTS,
     cache: `${cache.size} cached searches`
   });
 });
