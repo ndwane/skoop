@@ -109,7 +109,7 @@ async function fetchPage(url) {
           'x-rapidapi-host': 'dubizzle-api.p.rapidapi.com',
           'x-rapidapi-key': RAPID_API_KEY
         },
-        timeout: 30000
+        timeout: 120000
       }
     );
 
@@ -467,7 +467,7 @@ app.get('/debug/rapidapi', async (req, res) => {
           'x-rapidapi-host': 'dubizzle-api.p.rapidapi.com',
           'x-rapidapi-key': RAPID_API_KEY
         },
-        timeout: 30000
+        timeout: 120000
       }
     );
     res.json({
