@@ -721,14 +721,27 @@ export default function Index() {
     return '🟡';
   };
 
-  const getPlatformComparisons = (car, allCars) => {
-    const sameCars = allCars.filter(c =>
-      c.name && car.name &&
-      c.name.toLowerCase().includes(car.name.split(' ')[0]?.toLowerCase()) &&
-      c.link !== car.link && c.price > 0
-    );
+const getPlatformComparisons = (car, allCars) => {
+    if (!car.name || !car.price) return [];
+    const carWords = car.name.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    const carBrand = carWords[0] || '';
+    const carModel = carWords[1] || '';
+    const sameCars = allCars.filter(c => {
+      if (!c.name || c.link === car.link || !c.price || c.price <= 0) return false;
+      const cName = c.name.toLowerCase();
+      if (!cName.includes(carBrand) || (carModel && !cName.includes(carModel))) return false;
+      if (car.year && c.year) {
+        const yearDiff = Math.abs(parseInt(car.year) - parseInt(c.year));
+        if (yearDiff > 2) return false;
+      }
+      if (car.km && c.km) {
+        const kmDiff = Math.abs(parseInt(car.km) - parseInt(c.km));
+        if (kmDiff > 30000) return false;
+      }
+      return true;
+    });
     return sameCars.sort((a, b) => a.price - b.price).slice(0, 3);
-  };
+  };  
 
   const NAV_HEIGHT = 56 + insets.bottom;
   const SOURCE_COLORS = isDark ? SOURCE_COLORS_DARK : SOURCE_COLORS_LIGHT;
@@ -793,8 +806,7 @@ export default function Index() {
     gridCardImgPlaceholder: { width: '100%', height: CARD_WIDTH * 0.75, backgroundColor: CT.tagBg, justifyContent: 'center', alignItems: 'center' },
     gridCardBody: { padding: 10 },
     gridCardName: { color: CT.textPrimary, fontSize: 11, fontWeight: '600', textAlign: 'right', marginBottom: 4, minHeight: 30 },
-    gridCardPrice: { color: CT.textPrimary, fontSize: 14, fontWeight: 'bold', textAlign: 'right', marginBottom: 6 },
-    gridCardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    gridCardPrice: { color: CT.textPrimary, fontSize: 14, fontWeight: 'bold', textAlign: 'right' },    gridCardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     gridCardSourceBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
     gridCardSourceText: { fontSize: 9, fontWeight: '700' },
     gridCardHeart: { padding: 4 },
@@ -970,9 +982,17 @@ export default function Index() {
         )}
         <View style={S.gridCardBody}>
           <Text style={S.gridCardName} numberOfLines={2}>{item.name}</Text>
-          <Text style={S.gridCardPrice}>
-            {item.price > 0 ? `AED ${item.price?.toLocaleString()}` : t.contactForPrice}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6, marginBottom: 6 }}>
+            <Text style={S.gridCardPrice}>
+              {item.price > 0 ? `AED ${item.price?.toLocaleString()}` : t.contactForPrice}
+            </Text>
+            <View style={{
+              width: 10,
+              height: 10,
+              borderRadius: 5,
+              backgroundColor: getEvalColor(item.evaluation),
+            }} />
+          </View>
           <View style={S.gridCardFooter}>
             <TouchableOpacity
               style={S.gridCardHeart}
