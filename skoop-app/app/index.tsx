@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
   StyleSheet, ActivityIndicator, ScrollView, Modal,
-  Alert, Linking, Image, StatusBar, Share, Platform
+  Alert, Linking, Image, StatusBar, Share, Dimensions
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +12,8 @@ import { db, collection, addDoc, getDocs, deleteDoc, doc } from '../firebase';
 import { registerForPushNotifications, setupNotificationHandler } from '../notifications';
 
 const API_URL = 'https://skoop-production.up.railway.app';
+const CACHE_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // أسبوع
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ===== THEME COLORS =====
 const LIGHT = {
@@ -31,6 +33,7 @@ const LIGHT = {
   toggleOn: '#534AB7', toggleOff: '#D1D1D6',
   dealCardBg: '#26215C', dealCardBorder: '#534AB7',
   heartActive: '#DC2626', heartInactive: '#9B96CC',
+  newBadge: '#F59E0B', newBadgeText: '#FFFFFF',
 };
 
 const DARK = {
@@ -50,6 +53,7 @@ const DARK = {
   toggleOn: '#534AB7', toggleOff: '#2A1F5A',
   dealCardBg: '#1E1545', dealCardBorder: '#7F77DD',
   heartActive: '#F09595', heartInactive: '#534AB7',
+  newBadge: '#FCD34D', newBadgeText: '#0D0A1E',
 };
 
 const PLATFORMS = [
@@ -62,7 +66,6 @@ const PLATFORMS = [
   { id: 'Instagram',  label: 'انستقرام',   labelEn: 'Instagram',   emoji: '📸' },
 ];
 
-// ===== فلاتر جديدة =====
 const FUEL_TYPES = [
   { id: 'petrol',   label: 'بنزين',   labelEn: 'Petrol',   emoji: '⛽' },
   { id: 'diesel',   label: 'ديزل',    labelEn: 'Diesel',   emoji: '🛢️' },
@@ -75,7 +78,6 @@ const CONDITIONS = [
   { id: 'used', label: 'مستعمل',  labelEn: 'Used', emoji: '🚗' },
 ];
 
-// ===== LOGO ثابت =====
 const LogoWhite = ({ width = 140, height = 34 }) => (
   <Svg width={width} height={height} viewBox="0 0 420 100">
     <Line x1="10" y1="22" x2="62" y2="22" stroke="#378ADD" strokeWidth="5" strokeLinecap="round"/>
@@ -138,6 +140,22 @@ const TRANSLATIONS = {
     selectModelHint: 'اختر الموديل',
     selectBrandFirst: 'اختر الشركة أولاً',
     searchBrand: 'ابحث في الشركات...',
+    refresh: 'تحديث',
+    refreshing: 'جاري التحديث...',
+    newBadge: 'جديد',
+    newCarsFound: 'سيارات جديدة',
+    noNewCars: 'لا توجد سيارات جديدة',
+    details: 'التفاصيل',
+    carDetails: 'تفاصيل السيارة',
+    priceAnalysis: 'تحليل السعر',
+    lastUpdated: 'آخر تحديث',
+    cachedResults: 'النتائج المحفوظة',
+    minutesAgo: 'دقيقة',
+    hoursAgo: 'ساعة',
+    daysAgo: 'يوم',
+    justNow: 'الآن',
+    tapSearchToView: 'اضغط على بحث في الأعلى لعرض نتائجه',
+    info: 'المعلومات',
   },
   en: {
     home: 'Home', results_tab: 'Results', saved: 'Saved',
@@ -185,6 +203,22 @@ const TRANSLATIONS = {
     selectModelHint: 'Select Model',
     selectBrandFirst: 'Select brand first',
     searchBrand: 'Search brands...',
+    refresh: 'Refresh',
+    refreshing: 'Refreshing...',
+    newBadge: 'NEW',
+    newCarsFound: 'new cars',
+    noNewCars: 'No new cars found',
+    details: 'Details',
+    carDetails: 'Car Details',
+    priceAnalysis: 'Price Analysis',
+    lastUpdated: 'Last updated',
+    cachedResults: 'Cached Results',
+    minutesAgo: 'min',
+    hoursAgo: 'h',
+    daysAgo: 'd',
+    justNow: 'now',
+    tapSearchToView: 'Tap a search above to view its results',
+    info: 'Info',
   }
 };
 
@@ -275,6 +309,20 @@ const Toggle = ({ value, onToggle }) => (
   </TouchableOpacity>
 );
 
+// ===== الوقت النسبي =====
+const getRelativeTime = (timestamp, lang) => {
+  if (!timestamp) return '';
+  const t = TRANSLATIONS[lang];
+  const diff = Date.now() - timestamp;
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  if (minutes < 1) return t.justNow;
+  if (minutes < 60) return `${minutes} ${t.minutesAgo}`;
+  if (hours < 24) return `${hours} ${t.hoursAgo}`;
+  return `${days} ${t.daysAgo}`;
+};
+
 export default function Index() {
   const insets = useSafeAreaInsets();
   const [lang, setLang] = useState('ar');
@@ -285,7 +333,6 @@ export default function Index() {
   const colorList = COLORS[lang];
 
   const [activeTab, setActiveTab] = useState('home');
-  const [feedTab, setFeedTab] = useState('all');
   const [showPicker, setShowPicker] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(true);
@@ -295,19 +342,22 @@ export default function Index() {
   const [selectedPlatform, setSelectedPlatform] = useState('all');
   const [searchName, setSearchName] = useState('');
 
-  // ===== Dropdowns state =====
+  // Dropdowns
   const [platformsDropdownOpen, setPlatformsDropdownOpen] = useState(false);
   const [brandDropdownOpen, setBrandDropdownOpen] = useState(false);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [brandSearchQuery, setBrandSearchQuery] = useState('');
 
-  // ===== New filters =====
+  // Filters
   const [selectedCondition, setSelectedCondition] = useState('');
   const [selectedFuel, setSelectedFuel] = useState('');
   const [selectedColor, setSelectedColor] = useState('');
 
-  const [cars, setCars] = useState([]);
-  const [allCars, setAllCars] = useState([]);
+  // ===== الكاش الجديد =====
+  const [cachedSearches, setCachedSearches] = useState({});
+  const [activeSearchId, setActiveSearchId] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [loadingInstagram, setLoadingInstagram] = useState(false);
   const [savedSearches, setSavedSearches] = useState([]);
@@ -324,6 +374,10 @@ export default function Index() {
   const [showHeaderSearchBar, setShowHeaderSearchBar] = useState(false);
   const searchInputRef = useRef(null);
 
+  // Modal تفاصيل السيارة
+  const [selectedCar, setSelectedCar] = useState(null);
+  const [showCarDetails, setShowCarDetails] = useState(false);
+
   const vehicleTypes = [
     { id: 'cars', label: t.cars, icon: 'car-outline' },
     { id: 'motorcycles', label: t.motorcycles, icon: 'bicycle-outline' },
@@ -339,17 +393,13 @@ export default function Index() {
   useEffect(() => {
     loadSavedSearches();
     loadFavorites();
+    loadCachedSearches();
     setupNotificationHandler();
     registerForPushNotifications();
     AsyncStorage.getItem('scoop_onboarded').then(val => {
       if (val === 'true') setShowOnboarding(false);
     });
   }, []);
-
-  useEffect(() => {
-    if (selectedPlatform === 'all') setCars(allCars);
-    else setCars(allCars.filter(c => c.source === selectedPlatform));
-  }, [selectedPlatform, allCars]);
 
   const loadSavedSearches = async () => {
     setLoadingSaved(true);
@@ -385,6 +435,54 @@ export default function Index() {
     saveFavoritesToStorage(newFavs);
   };
 
+  // ===== كاش البحوث =====
+  const loadCachedSearches = async () => {
+    try {
+      const stored = await AsyncStorage.getItem('scoop_cached_searches');
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      const now = Date.now();
+      const valid = {};
+      Object.keys(parsed).forEach(id => {
+        if (now - parsed[id].savedAt < CACHE_DURATION_MS) {
+          valid[id] = parsed[id];
+        }
+      });
+      setCachedSearches(valid);
+      await AsyncStorage.setItem('scoop_cached_searches', JSON.stringify(valid));
+    } catch (e) {
+      console.log('Cache load error:', e);
+    }
+  };
+
+  const saveCachedSearch = async (searchId, searchInfo, results, newLinks = []) => {
+    try {
+      const updated = {
+        ...cachedSearches,
+        [searchId]: {
+          searchInfo,
+          results,
+          savedAt: Date.now(),
+          newLinks,
+        }
+      };
+      setCachedSearches(updated);
+      await AsyncStorage.setItem('scoop_cached_searches', JSON.stringify(updated));
+    } catch (e) {
+      console.log('Cache save error:', e);
+    }
+  };
+
+  const deleteCachedSearch = async (searchId) => {
+    try {
+      const updated = { ...cachedSearches };
+      delete updated[searchId];
+      setCachedSearches(updated);
+      await AsyncStorage.setItem('scoop_cached_searches', JSON.stringify(updated));
+      if (activeSearchId === searchId) setActiveSearchId(null);
+    } catch (e) {}
+  };
+
   const saveSearch = async (auto = false) => {
     if (!selectedBrand) return;
     try {
@@ -410,8 +508,7 @@ export default function Index() {
 
   const deleteSearch = async (id) => {
     Alert.alert(
-      t.deleteConfirm,
-      '',
+      t.deleteConfirm, '',
       [
         { text: lang === 'ar' ? 'إلغاء' : 'Cancel', style: 'cancel' },
         {
@@ -429,9 +526,9 @@ export default function Index() {
   };
 
   const openListing = (link) => {
-  if (!link) return;
-  Linking.openURL(link);
-};
+    if (!link) return;
+    Linking.openURL(link);
+  };
 
   const shareCar = async (item) => {
     try {
@@ -440,37 +537,36 @@ export default function Index() {
     } catch (e) {}
   };
 
+  // ===== البحث =====
   const fetchInstagram = async (keyword) => {
     setLoadingInstagram(true);
     try {
       const res = await fetch(API_URL + '/instagram?q=' + encodeURIComponent(keyword));
       const data = await res.json();
-      const results = Array.isArray(data) ? data : [];
-      if (results.length > 0) {
-        setAllCars(prev => {
-          const seen = new Set(prev.map(c => c.link));
-          return [...prev, ...results.filter(c => !seen.has(c.link))];
-        });
-      }
-    } catch (e) {}
-    setLoadingInstagram(false);
+      return Array.isArray(data) ? data : [];
+    } catch (e) { return []; }
+    finally { setLoadingInstagram(false); }
   };
 
-  const searchCars = async (keyword, saveOnSearch = false) => {
+  const searchCars = async (searchInfo, saveOnSearch = false) => {
+    const { keyword, brand, brandLabel, model, platform, city } = searchInfo;
     if (!keyword) return;
-    setLoading(true); setAllCars([]); setCars([]);
-    setShowPicker(false); setShowHeaderSearchBar(false);
-    setHeaderSearch(''); setActiveTab('results');
 
-    if (saveOnSearch && selectedBrand) {
-      saveSearch(true);
-    }
+    const searchId = `${brand}_${model || 'all'}_${platform || 'all'}_${city || 'all'}`;
+    setLoading(true);
+    setActiveSearchId(searchId);
+    setShowPicker(false);
+    setShowHeaderSearchBar(false);
+    setHeaderSearch('');
+    setActiveTab('results');
+
+    if (saveOnSearch && selectedBrand) saveSearch(true);
 
     try {
       const params = new URLSearchParams({ q: keyword });
       if (minPrice) params.append('minPrice', minPrice);
       if (maxPrice) params.append('maxPrice', maxPrice);
-      if (selectedCity) params.append('city', selectedCity);
+      if (city) params.append('city', city);
       if (yearFrom) params.append('yearFrom', yearFrom);
       if (yearTo) params.append('yearTo', yearTo);
       if (kmFrom) params.append('kmFrom', kmFrom);
@@ -478,22 +574,112 @@ export default function Index() {
       if (selectedCondition) params.append('condition', selectedCondition);
       if (selectedFuel) params.append('fuel', selectedFuel);
       if (selectedColor) params.append('color', selectedColor);
+
       const res = await fetch(API_URL + '/search?' + params.toString());
       const data = await res.json();
-      const results = Array.isArray(data) ? data : [];
-      setAllCars(results);
-      setCars(selectedPlatform === 'all' ? results : results.filter(c => c.source === selectedPlatform));
+      let results = Array.isArray(data) ? data : [];
+
+      if (platform && platform !== 'all') {
+        results = results.filter(c => c.source === platform);
+      }
+
+      await saveCachedSearch(searchId, {
+        keyword, brand, brandLabel, model, platform, city
+      }, results, []);
+
+      // تحليل AI في الخلفية
       results.forEach(async (car, index) => {
         try {
           const ev = await fetch(API_URL + '/evaluate?name=' + encodeURIComponent(car.name || '') + '&price=' + (car.price || 0));
           const evData = await ev.json();
-          setAllCars(prev => prev.map((c, i) => i === index ? { ...c, evaluation: evData.evaluation } : c));
-          setCars(prev => prev.map(c => c.link === car.link ? { ...c, evaluation: evData.evaluation } : c));
+          setCachedSearches(prev => {
+            const updated = { ...prev };
+            if (updated[searchId]) {
+              updated[searchId].results = updated[searchId].results.map((c, i) =>
+                i === index ? { ...c, evaluation: evData.evaluation } : c
+              );
+              AsyncStorage.setItem('scoop_cached_searches', JSON.stringify(updated));
+            }
+            return updated;
+          });
         } catch (e) {}
       });
-      fetchInstagram(keyword);
-    } catch (e) {}
+
+      // Instagram
+      const igResults = await fetchInstagram(keyword);
+      if (igResults.length > 0) {
+        setCachedSearches(prev => {
+          const updated = { ...prev };
+          if (updated[searchId]) {
+            const seen = new Set(updated[searchId].results.map(c => c.link));
+            const newOnes = igResults.filter(c => !seen.has(c.link));
+            updated[searchId].results = [...updated[searchId].results, ...newOnes];
+            AsyncStorage.setItem('scoop_cached_searches', JSON.stringify(updated));
+          }
+          return updated;
+        });
+      }
+    } catch (e) {
+      console.log('Search error:', e);
+    }
     setLoading(false);
+  };
+
+  const refreshSearch = async (searchId) => {
+    const cached = cachedSearches[searchId];
+    if (!cached) return;
+
+    setRefreshing(true);
+    try {
+      const { keyword, platform, city } = cached.searchInfo;
+      const params = new URLSearchParams({ q: keyword });
+      if (city) params.append('city', city);
+
+      const res = await fetch(API_URL + '/search?' + params.toString());
+      const data = await res.json();
+      let newResults = Array.isArray(data) ? data : [];
+
+      if (platform && platform !== 'all') {
+        newResults = newResults.filter(c => c.source === platform);
+      }
+
+      const existingLinks = new Set(cached.results.map(c => c.link));
+      const trulyNew = newResults.filter(c => !existingLinks.has(c.link));
+
+      if (trulyNew.length > 0) {
+        const merged = [...trulyNew, ...cached.results];
+        const newLinks = trulyNew.map(c => c.link);
+        await saveCachedSearch(searchId, cached.searchInfo, merged, newLinks);
+
+        trulyNew.forEach(async (car) => {
+          try {
+            const ev = await fetch(API_URL + '/evaluate?name=' + encodeURIComponent(car.name || '') + '&price=' + (car.price || 0));
+            const evData = await ev.json();
+            setCachedSearches(prev => {
+              const updated = { ...prev };
+              if (updated[searchId]) {
+                updated[searchId].results = updated[searchId].results.map(c =>
+                  c.link === car.link ? { ...c, evaluation: evData.evaluation } : c
+                );
+                AsyncStorage.setItem('scoop_cached_searches', JSON.stringify(updated));
+              }
+              return updated;
+            });
+          } catch (e) {}
+        });
+
+        Alert.alert(
+          '🎉 ' + (lang === 'ar' ? 'سيارات جديدة' : 'New cars'),
+          `${trulyNew.length} ${t.newCarsFound}`
+        );
+      } else {
+        Alert.alert('', t.noNewCars);
+        await saveCachedSearch(searchId, cached.searchInfo, cached.results, []);
+      }
+    } catch (e) {
+      console.log('Refresh error:', e);
+    }
+    setRefreshing(false);
   };
 
   const resetFilters = () => {
@@ -535,7 +721,7 @@ export default function Index() {
     return '🟡';
   };
 
-  const getPlatformComparisons = (car) => {
+  const getPlatformComparisons = (car, allCars) => {
     const sameCars = allCars.filter(c =>
       c.name && car.name &&
       c.name.toLowerCase().includes(car.name.split(' ')[0]?.toLowerCase()) &&
@@ -544,80 +730,39 @@ export default function Index() {
     return sameCars.sort((a, b) => a.price - b.price).slice(0, 3);
   };
 
-  const getDealOfDay = () => {
-    if (allCars.length === 0) return null;
-    return allCars.filter(c => c.price > 0).sort((a, b) => a.price - b.price)[0] || null;
-  };
-
   const NAV_HEIGHT = 56 + insets.bottom;
   const SOURCE_COLORS = isDark ? SOURCE_COLORS_DARK : SOURCE_COLORS_LIGHT;
   const selectedPlatformLabel = PLATFORMS.find(p => p.id === selectedPlatform);
 
+  const cachedSearchesList = Object.keys(cachedSearches).map(id => ({
+    id, ...cachedSearches[id]
+  })).sort((a, b) => b.savedAt - a.savedAt);
+
+  const activeCache = activeSearchId ? cachedSearches[activeSearchId] : null;
+  const activeResults = activeCache?.results || [];
+  const activeNewLinks = activeCache?.newLinks || [];
+
+  const CARD_WIDTH = (SCREEN_WIDTH - 16 * 2 - 10) / 2;
+
   const S = StyleSheet.create({
     container: { flex: 1, backgroundColor: CT.bg },
-    header: {
-      backgroundColor: CT.hdrBg,
-      paddingTop: insets.top + 8,
-      paddingBottom: 10,
-      paddingHorizontal: 16,
-      elevation: 4,
-    },
+    header: { backgroundColor: CT.hdrBg, paddingTop: insets.top + 8, paddingBottom: 10, paddingHorizontal: 16, elevation: 4 },
     headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     headerIconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
     headerActions: { flexDirection: 'row', gap: 8, alignItems: 'center' },
     badge: { position: 'absolute', top: -3, right: -3, backgroundColor: CT.blue, borderRadius: 9, width: 16, height: 16, justifyContent: 'center', alignItems: 'center' },
     badgeText: { color: '#fff', fontSize: 9, fontWeight: 'bold' },
-    editFeedBtn: { backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.2)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
-    editFeedText: { color: '#fff', fontSize: 11 },
-
     headerSearchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
-    headerSearchInput: {
-      flex: 1, backgroundColor: CT.searchBg, borderWidth: 0.5, borderColor: CT.searchBorder,
-      borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9,
-      color: '#fff', fontSize: 13, textAlign: 'right',
-    },
+    headerSearchInput: { flex: 1, backgroundColor: CT.searchBg, borderWidth: 0.5, borderColor: CT.searchBorder, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, color: '#fff', fontSize: 13, textAlign: 'right' },
     headerSearchBtn: { width: 36, height: 36, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 10, justifyContent: 'center', alignItems: 'center', borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.2)' },
 
-    onboardingCard: {
-      backgroundColor: CT.navyDark, borderRadius: 16, margin: 16, padding: 18,
-      alignItems: 'center', borderWidth: 0.5, borderColor: isDark ? '#534AB7' : '#AFA9EC',
-    },
+    onboardingCard: { backgroundColor: CT.navyDark, borderRadius: 16, margin: 16, padding: 18, alignItems: 'center', borderWidth: 0.5, borderColor: isDark ? '#534AB7' : '#AFA9EC' },
     onboardingTitle: { color: '#fff', fontSize: 15, fontWeight: '700', textAlign: 'center', marginBottom: 6 },
     onboardingSub: { color: 'rgba(255,255,255,0.6)', fontSize: 11, textAlign: 'center', marginBottom: 14 },
     onboardingBtn: { backgroundColor: '#fff', borderRadius: 20, paddingHorizontal: 24, paddingVertical: 8 },
     onboardingBtnText: { color: CT.navyDark, fontSize: 13, fontWeight: '700' },
 
-    dealCard: {
-      backgroundColor: CT.dealCardBg, borderRadius: 16, marginHorizontal: 16, marginBottom: 12,
-      padding: 14, borderWidth: 0.5, borderColor: CT.dealCardBorder,
-    },
-    dealHdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-    dealTitle: { color: isDark ? '#EEEDFE' : '#fff', fontSize: 13, fontWeight: '700' },
-    dealSub: { color: isDark ? '#7F77DD' : 'rgba(255,255,255,0.6)', fontSize: 10 },
-    dealName: { color: isDark ? '#CECBF6' : '#fff', fontSize: 14, fontWeight: '600', textAlign: 'right', marginBottom: 4 },
-    dealPrice: { color: isDark ? '#AFA9EC' : '#7EC8F5', fontSize: 22, fontWeight: '800', textAlign: 'right' },
-    dealTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 8, justifyContent: 'flex-end' },
-    dealTag: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
-    dealTagText: { fontSize: 10, color: isDark ? '#AFA9EC' : 'rgba(255,255,255,0.8)' },
-    dealOpenBtn: {
-      backgroundColor: isDark ? '#534AB7' : 'rgba(255,255,255,0.15)',
-      borderRadius: 10, padding: 10, alignItems: 'center', marginTop: 10,
-      borderWidth: 0.5, borderColor: isDark ? '#7F77DD' : 'rgba(255,255,255,0.3)',
-    },
-    dealOpenBtnText: { color: '#fff', fontWeight: '600', fontSize: 12 },
-
-    createBtnPrimary: {
-      backgroundColor: CT.navyDark,
-      borderRadius: 14,
-      marginHorizontal: 16,
-      marginTop: 6,
-      marginBottom: 14,
-      padding: 14,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-    },
+    createBtnPrimary: { backgroundColor: CT.navyDark, borderRadius: 14, marginHorizontal: 16, marginTop: 6, marginBottom: 14, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
     createBtnPrimaryText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 
     secHdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginTop: 6, marginBottom: 10 },
@@ -625,11 +770,64 @@ export default function Index() {
     countBadge: { backgroundColor: CT.tagBg, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 },
     countBadgeText: { color: CT.navy, fontSize: 11, fontWeight: '600' },
 
+    // ===== شريط البحوث المحفوظة =====
+    cachedSearchesBar: { paddingHorizontal: 12, paddingVertical: 10, backgroundColor: CT.card, borderBottomWidth: 0.5, borderBottomColor: CT.cardBorder },
+    cachedSearchChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, backgroundColor: CT.bg, borderWidth: 1, borderColor: CT.cardBorder, marginRight: 8 },
+    cachedSearchChipActive: { backgroundColor: CT.navyDark, borderColor: CT.navyDark },
+    cachedSearchChipText: { fontSize: 12, color: CT.textSecondary, fontWeight: '500' },
+    cachedSearchChipTextActive: { color: '#fff', fontWeight: '700' },
+    cachedSearchChipCount: { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 1 },
+    cachedSearchChipCountText: { fontSize: 10, color: '#fff', fontWeight: '700' },
+
+    // ===== شريط البحث النشط =====
+    activeSearchHdr: { paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: CT.bg },
+    activeSearchInfo: { flex: 1, alignItems: 'flex-end' },
+    activeSearchTitle: { fontSize: 13, fontWeight: '700', color: CT.textPrimary, textAlign: 'right' },
+    activeSearchSub: { fontSize: 10, color: CT.textMuted, textAlign: 'right', marginTop: 2 },
+    refreshBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: CT.navyDark, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
+    refreshBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+
+    // ===== Grid 2x =====
+    gridCard: { width: CARD_WIDTH, backgroundColor: CT.card, borderRadius: 12, overflow: 'hidden', borderWidth: 0.5, borderColor: CT.cardBorder, marginBottom: 10 },
+    gridCardImg: { width: '100%', height: CARD_WIDTH * 0.75 },
+    gridCardImgPlaceholder: { width: '100%', height: CARD_WIDTH * 0.75, backgroundColor: CT.tagBg, justifyContent: 'center', alignItems: 'center' },
+    gridCardBody: { padding: 10 },
+    gridCardName: { color: CT.textPrimary, fontSize: 11, fontWeight: '600', textAlign: 'right', marginBottom: 4, minHeight: 30 },
+    gridCardPrice: { color: CT.textPrimary, fontSize: 14, fontWeight: 'bold', textAlign: 'right', marginBottom: 6 },
+    gridCardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    gridCardSourceBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+    gridCardSourceText: { fontSize: 9, fontWeight: '700' },
+    gridCardHeart: { padding: 4 },
+    newBadgeOverlay: { position: 'absolute', top: 8, right: 8, backgroundColor: CT.newBadge, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, zIndex: 10 },
+    newBadgeText: { color: CT.newBadgeText, fontSize: 9, fontWeight: '900' },
+
+    // ===== Modal تفاصيل =====
+    detailsModalBox: { backgroundColor: CT.modalBg, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '92%' },
+    detailsHandle: { width: 40, height: 4, backgroundColor: CT.cardBorder, borderRadius: 2, alignSelf: 'center', marginVertical: 12 },
+    detailsHdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12 },
+    detailsTitle: { color: CT.textPrimary, fontSize: 16, fontWeight: 'bold' },
+    detailsImg: { width: '100%', height: 220 },
+    detailsImgPlaceholder: { width: '100%', height: 220, backgroundColor: CT.tagBg, justifyContent: 'center', alignItems: 'center' },
+    detailsContent: { padding: 16 },
+    detailsName: { color: CT.textPrimary, fontSize: 18, fontWeight: 'bold', textAlign: 'right', marginBottom: 8 },
+    detailsPrice: { color: CT.textPrimary, fontSize: 26, fontWeight: 'bold', textAlign: 'right', marginBottom: 16 },
+    detailsSection: { marginBottom: 16 },
+    detailsSectionTitle: { fontSize: 12, fontWeight: '700', color: CT.textSecondary, marginBottom: 8, textAlign: 'right' },
+    detailsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' },
+    detailsTag: { backgroundColor: CT.tagBg, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
+    detailsTagText: { fontSize: 12, color: CT.tagText, fontWeight: '500' },
+    detailsEvalBox: { borderRadius: 10, padding: 12 },
+    detailsEvalText: { fontSize: 13, fontWeight: '600', textAlign: 'right', lineHeight: 20 },
+    detailsActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+    detailsOpenBtn: { flex: 1, backgroundColor: CT.navyDark, borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+    detailsOpenBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+    detailsActionBtn: { width: 50, backgroundColor: CT.tagBg, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+
+    // البحوث المحفوظة
     savedCard: { backgroundColor: CT.card, borderRadius: 14, marginHorizontal: 16, marginBottom: 10, padding: 14, borderWidth: 0.5, borderColor: CT.cardBorder },
     savedCardHdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
     savedCardTitle: { fontSize: 14, fontWeight: '700', color: CT.textPrimary, textAlign: 'right' },
     savedCardSub: { fontSize: 11, color: CT.textMuted, textAlign: 'right', marginTop: 2 },
-    savedPlatBadge: { borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2, marginTop: 5, alignSelf: 'flex-end' },
     deleteBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: CT.activeRedBg, justifyContent: 'center', alignItems: 'center' },
     tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginBottom: 10, justifyContent: 'flex-end' },
     tag: { backgroundColor: CT.tagBg, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 },
@@ -644,56 +842,8 @@ export default function Index() {
     emptyBtn: { backgroundColor: CT.navyDark, borderRadius: 24, paddingHorizontal: 28, paddingVertical: 12 },
     emptyBtnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
 
-    feedTabsRow: { flexDirection: 'row', gap: 6, padding: 10, backgroundColor: CT.card, borderBottomWidth: 0.5, borderBottomColor: CT.cardBorder },
-    feedTab: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, borderWidth: 0.5, borderColor: CT.cardBorder, backgroundColor: CT.bg },
-    feedTabOn: { backgroundColor: CT.navyDark, borderColor: CT.navyDark },
-    feedTabTxt: { fontSize: 12, color: CT.textSecondary },
-    feedTabTxtOn: { color: '#fff', fontWeight: '500' },
-    igBanner: { backgroundColor: isDark ? '#15082a' : '#F3E8FF', marginHorizontal: 16, marginTop: 8, borderRadius: 10, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 0.5, borderColor: isDark ? '#2a1060' : '#DDD6FE' },
-    igBannerText: { fontSize: 12, color: '#7C3AED', fontWeight: '500' },
     loadingBox: { alignItems: 'center', marginTop: 60 },
     loadingText: { color: CT.textSecondary, marginTop: 12, fontSize: 14 },
-    resultsHdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginVertical: 8 },
-    backBtn: { color: CT.navy, fontSize: 14, fontWeight: '600' },
-    resultsCount: { color: CT.textSecondary, fontSize: 13 },
-    saveSearchBtn: { backgroundColor: CT.tagBg, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 4 },
-    saveSearchText: { color: CT.navy, fontSize: 12, fontWeight: '600' },
-
-    card: { backgroundColor: CT.card, marginBottom: 10, borderRadius: 14, overflow: 'hidden', borderWidth: 0.5, borderColor: CT.cardBorder },
-    carImg: { width: '100%', height: 150 },
-    carImgPlaceholder: { width: '100%', height: 90, backgroundColor: CT.tagBg, justifyContent: 'center', alignItems: 'center' },
-    cardBody: { padding: 12 },
-    cardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 },
-    sourceBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
-    sourceText: { fontSize: 10, fontWeight: '700' },
-    cardActions: { flexDirection: 'row', gap: 6 },
-    iconBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: CT.tagBg, justifyContent: 'center', alignItems: 'center' },
-    iconBtnHeart: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-    carName: { color: CT.textPrimary, fontSize: 14, fontWeight: 'bold', marginBottom: 3, textAlign: 'right' },
-    carPrice: { color: CT.textPrimary, fontSize: 18, fontWeight: 'bold', textAlign: 'right', marginBottom: 8 },
-    evalBox: { borderRadius: 8, padding: 8, marginBottom: 8 },
-    evalText: { fontSize: 12, fontWeight: '600', textAlign: 'right', lineHeight: 18 },
-    evalLoading: { backgroundColor: CT.tagBg, borderRadius: 8, padding: 8, marginBottom: 8 },
-    evalLoadingText: { color: CT.textMuted, fontSize: 12, textAlign: 'right' },
-
-    openBtn: { backgroundColor: CT.navyDark, borderRadius: 10, padding: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 6 },
-    openBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-
-    compareBox: { backgroundColor: CT.compareBg, borderRadius: 12, overflow: 'hidden', marginTop: 8, borderWidth: 0.5, borderColor: CT.cardBorder },
-    compareHdr: { backgroundColor: CT.compareHdr, padding: 9, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    compareHdrTitle: { color: '#EEEDFE', fontSize: 11, fontWeight: '700' },
-    compareHdrSub: { color: isDark ? '#7F77DD' : '#AFA9EC', fontSize: 10 },
-    compareRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 8, borderBottomWidth: 0.5, borderBottomColor: CT.cardBorder },
-    comparePlat: { fontSize: 11, color: CT.textSecondary, fontWeight: '600' },
-    comparePriceRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-    comparePrice: { fontSize: 12, fontWeight: '700', color: CT.textPrimary },
-    compareBestBadge: { backgroundColor: CT.activeGreenBg, borderRadius: 20, paddingHorizontal: 6, paddingVertical: 2 },
-    compareBestText: { color: CT.activeGreen, fontSize: 9, fontWeight: '700' },
-    compareDiff: { fontSize: 10, color: CT.activeRed },
-    compareFoot: { backgroundColor: CT.compareFoot, padding: 9, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    compareFootText: { color: isDark ? '#7F77DD' : '#AFA9EC', fontSize: 10 },
-    compareFootBtn: { backgroundColor: CT.compareFootBtn, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
-    compareFootBtnText: { color: '#fff', fontSize: 10, fontWeight: '700' },
 
     bottomNav: { backgroundColor: CT.navBg, flexDirection: 'row', paddingTop: 10, borderTopWidth: 0.5, borderTopColor: CT.navBorder },
     navItem: { flex: 1, alignItems: 'center' },
@@ -708,10 +858,7 @@ export default function Index() {
     resetText: { color: CT.blue, fontSize: 14 },
 
     sectionLabel: { color: CT.textSecondary, fontSize: 12, fontWeight: '600', textAlign: 'right', marginBottom: 8, marginTop: 4 },
-    nameInput: {
-      backgroundColor: CT.bg, color: CT.textPrimary, padding: 12, borderRadius: 10,
-      fontSize: 13, borderWidth: 1, borderColor: CT.cardBorder, textAlign: 'right', marginBottom: 14,
-    },
+    nameInput: { backgroundColor: CT.bg, color: CT.textPrimary, padding: 12, borderRadius: 10, fontSize: 13, borderWidth: 1, borderColor: CT.cardBorder, textAlign: 'right', marginBottom: 14 },
 
     typeTabs: { flexDirection: 'row', gap: 8, marginBottom: 14 },
     typeTab: { flex: 1, alignItems: 'center', padding: 10, borderRadius: 12, backgroundColor: CT.bg, borderWidth: 2, borderColor: 'transparent' },
@@ -719,68 +866,35 @@ export default function Index() {
     typeTabLabel: { fontSize: 11, color: CT.textMuted },
     typeTabLabelOn: { color: CT.navyDark, fontWeight: 'bold' },
 
-    // ===== DROPDOWN universal =====
-    dropdownTrigger: {
-      backgroundColor: CT.bg, borderRadius: 10, padding: 12,
-      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-      borderWidth: 1, borderColor: CT.cardBorder, marginBottom: 12,
-    },
+    dropdownTrigger: { backgroundColor: CT.bg, borderRadius: 10, padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: CT.cardBorder, marginBottom: 12 },
     dropdownTriggerOpen: { borderColor: CT.navyDark, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
     dropdownTriggerDisabled: { opacity: 0.45 },
     dropdownTriggerText: { fontSize: 13, color: CT.textPrimary, flex: 1, textAlign: 'right' },
     dropdownTriggerPlaceholder: { color: CT.textMuted },
     dropdownTriggerEmoji: { fontSize: 16, marginLeft: 8 },
-    dropdownList: {
-      backgroundColor: CT.bg, borderWidth: 1, borderColor: CT.navyDark,
-      borderTopWidth: 0, borderBottomLeftRadius: 10, borderBottomRightRadius: 10,
-      marginTop: -12, marginBottom: 12, overflow: 'hidden', maxHeight: 260,
-    },
-    dropdownSearch: {
-      backgroundColor: CT.card, padding: 10, fontSize: 12, color: CT.textPrimary,
-      borderBottomWidth: 0.5, borderBottomColor: CT.cardBorder, textAlign: 'right',
-    },
-    dropdownItem: {
-      padding: 11, flexDirection: 'row', alignItems: 'center', gap: 8,
-      borderBottomWidth: 0.5, borderBottomColor: CT.cardBorder,
-    },
+    dropdownList: { backgroundColor: CT.bg, borderWidth: 1, borderColor: CT.navyDark, borderTopWidth: 0, borderBottomLeftRadius: 10, borderBottomRightRadius: 10, marginTop: -12, marginBottom: 12, overflow: 'hidden', maxHeight: 260 },
+    dropdownSearch: { backgroundColor: CT.card, padding: 10, fontSize: 12, color: CT.textPrimary, borderBottomWidth: 0.5, borderBottomColor: CT.cardBorder, textAlign: 'right' },
+    dropdownItem: { padding: 11, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: 0.5, borderBottomColor: CT.cardBorder },
     dropdownItemActive: { backgroundColor: CT.tagBg },
     dropdownItemText: { fontSize: 13, color: CT.textPrimary, flex: 1, textAlign: 'right' },
-    dropdownEmpty: { padding: 16, alignItems: 'center' },
-    dropdownEmptyText: { color: CT.textMuted, fontSize: 12 },
 
     rangeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
-    rangeInput: {
-      flex: 1, backgroundColor: CT.bg, color: CT.textPrimary,
-      padding: 11, borderRadius: 10, fontSize: 13,
-      borderWidth: 1, borderColor: CT.cardBorder,
-    },
+    rangeInput: { flex: 1, backgroundColor: CT.bg, color: CT.textPrimary, padding: 11, borderRadius: 10, fontSize: 13, borderWidth: 1, borderColor: CT.cardBorder },
     rangeDash: { color: CT.textMuted, fontSize: 16 },
 
     modalBtnsRow: { flexDirection: 'row', gap: 8, marginTop: 10, marginBottom: 30 },
-    modalBtnSecondary: {
-      flex: 1, backgroundColor: CT.tagBg, borderRadius: 14, padding: 14,
-      alignItems: 'center', borderWidth: 1, borderColor: CT.navy,
-    },
+    modalBtnSecondary: { flex: 1, backgroundColor: CT.tagBg, borderRadius: 14, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: CT.navy },
     modalBtnSecondaryText: { color: CT.navy, fontWeight: 'bold', fontSize: 14 },
-    modalBtnPrimary: {
-      flex: 1, backgroundColor: CT.navyDark, borderRadius: 14, padding: 14,
-      alignItems: 'center',
-    },
+    modalBtnPrimary: { flex: 1, backgroundColor: CT.navyDark, borderRadius: 14, padding: 14, alignItems: 'center' },
     modalBtnPrimaryText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
 
-    // ===== chips الجديدة (الحالة + الوقود) =====
     pillsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
-    pill: {
-      flexDirection: 'row', alignItems: 'center', gap: 6,
-      paddingHorizontal: 14, paddingVertical: 9, borderRadius: 22,
-      backgroundColor: CT.bg, borderWidth: 1, borderColor: CT.cardBorder,
-    },
+    pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 22, backgroundColor: CT.bg, borderWidth: 1, borderColor: CT.cardBorder },
     pillOn: { backgroundColor: CT.navyDark, borderColor: CT.navyDark },
     pillEmoji: { fontSize: 14 },
     pillText: { fontSize: 12, color: CT.textSecondary, fontWeight: '500' },
     pillTextOn: { color: '#fff', fontWeight: 'bold' },
 
-    // ===== Colors grid (داخل Modal البحث) =====
     colorsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 14, justifyContent: 'flex-start' },
     colorItem: { alignItems: 'center', width: 52 },
     colorCircle: { width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: CT.cardBorder, marginBottom: 4 },
@@ -788,7 +902,6 @@ export default function Index() {
     colorLabel: { color: CT.textMuted, fontSize: 9, textAlign: 'center' },
     colorLabelOn: { color: CT.navy, fontWeight: 'bold' },
 
-    // ===== Modal الفلاتر القديم (للمدينة والكيلومترات) =====
     filterLabel: { color: CT.textSecondary, fontSize: 12, marginBottom: 10, textAlign: 'right', fontWeight: '600' },
     chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 20 },
     chip: { backgroundColor: CT.bg, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: CT.cardBorder },
@@ -798,7 +911,6 @@ export default function Index() {
     applyBtn: { backgroundColor: CT.navyDark, borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 20 },
     applyBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
 
-    // ===== Settings =====
     subBanner: { backgroundColor: CT.navyDark, borderRadius: 14, margin: 16, padding: 16, flexDirection: 'row', alignItems: 'center' },
     subBannerSmall: { fontSize: 10, color: 'rgba(255,255,255,0.7)', marginBottom: 2 },
     subBannerTitle: { fontSize: 14, fontWeight: '600', color: '#fff' },
@@ -817,7 +929,6 @@ export default function Index() {
     favSub: { fontSize: 12, color: CT.textMuted, textAlign: 'right', marginTop: 4 },
   });
 
-  // ===== ONBOARDING =====
   const renderOnboarding = () => {
     if (!showOnboarding) return null;
     return (
@@ -836,47 +947,167 @@ export default function Index() {
     );
   };
 
-  const renderDealOfDay = () => {
-    const deal = getDealOfDay();
-    if (!deal) return null;
+  const renderGridCard = ({ item }) => {
+    const fav = isFavorite(item);
+    const isNew = activeNewLinks.includes(item.link);
     return (
-      <View style={S.dealCard}>
-        <View style={S.dealHdr}>
-          <Ionicons name="flame" size={16} color="#FCD34D" />
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={S.dealTitle}>{t.dealOfDay}</Text>
-            <Text style={S.dealSub}>{t.dealSub}</Text>
+      <TouchableOpacity
+        style={S.gridCard}
+        onPress={() => { setSelectedCar(item); setShowCarDetails(true); }}
+        activeOpacity={0.7}
+      >
+        {isNew && (
+          <View style={S.newBadgeOverlay}>
+            <Text style={S.newBadgeText}>✨ {t.newBadge}</Text>
+          </View>
+        )}
+        {item.image ? (
+          <Image source={{ uri: item.image }} style={S.gridCardImg} resizeMode="cover" />
+        ) : (
+          <View style={S.gridCardImgPlaceholder}>
+            <Ionicons name="car-outline" size={36} color={CT.navy} />
+          </View>
+        )}
+        <View style={S.gridCardBody}>
+          <Text style={S.gridCardName} numberOfLines={2}>{item.name}</Text>
+          <Text style={S.gridCardPrice}>
+            {item.price > 0 ? `AED ${item.price?.toLocaleString()}` : t.contactForPrice}
+          </Text>
+          <View style={S.gridCardFooter}>
+            <TouchableOpacity
+              style={S.gridCardHeart}
+              onPress={(e) => { e.stopPropagation(); toggleFavorite(item); }}
+            >
+              <Ionicons name={fav ? 'heart' : 'heart-outline'} size={18} color={fav ? CT.heartActive : CT.heartInactive} />
+            </TouchableOpacity>
+            {item.source && (
+              <View style={[S.gridCardSourceBadge, { backgroundColor: SOURCE_COLORS[item.source] || CT.tagBg }]}>
+                <Text style={[S.gridCardSourceText, { color: SOURCE_TEXT[item.source] || CT.navy }]}>
+                  {PLATFORMS.find(p => p.id === item.source)?.emoji || ''} {item.source}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
-        <Text style={S.dealName}>{deal.name}</Text>
-        <Text style={S.dealPrice}>AED {deal.price?.toLocaleString()}</Text>
-        <View style={S.dealTags}>
-          {deal.city && <View style={S.dealTag}><Text style={S.dealTagText}>📍 {deal.city}</Text></View>}
-          {deal.year && <View style={S.dealTag}><Text style={S.dealTagText}>📅 {deal.year}</Text></View>}
-          {deal.km && <View style={S.dealTag}><Text style={S.dealTagText}>🛣️ {deal.km?.toLocaleString()} km</Text></View>}
-          {deal.source && <View style={S.dealTag}><Text style={S.dealTagText}>{PLATFORMS.find(p => p.id === deal.source)?.emoji} {deal.source}</Text></View>}
+      </TouchableOpacity>
+    );
+  };
+
+  const renderCarDetailsModal = () => {
+    if (!selectedCar) return null;
+    const comparisons = getPlatformComparisons(selectedCar, activeResults);
+    const fav = isFavorite(selectedCar);
+
+    return (
+      <Modal visible={showCarDetails} animationType="slide" transparent onRequestClose={() => setShowCarDetails(false)}>
+        <View style={S.modalOverlay}>
+          <View style={S.detailsModalBox}>
+            <View style={S.detailsHandle} />
+            <View style={S.detailsHdr}>
+              <TouchableOpacity onPress={() => setShowCarDetails(false)}>
+                <Ionicons name="close" size={24} color={CT.textSecondary} />
+              </TouchableOpacity>
+              <Text style={S.detailsTitle}>{t.carDetails}</Text>
+              <View style={{ width: 24 }} />
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {selectedCar.image ? (
+                <Image source={{ uri: selectedCar.image }} style={S.detailsImg} resizeMode="cover" />
+              ) : (
+                <View style={S.detailsImgPlaceholder}>
+                  <Ionicons name="car-outline" size={60} color={CT.navy} />
+                </View>
+              )}
+              <View style={S.detailsContent}>
+                <Text style={S.detailsName}>{selectedCar.name}</Text>
+                <Text style={S.detailsPrice}>
+                  {selectedCar.price > 0 ? `AED ${selectedCar.price?.toLocaleString()}` : t.contactForPrice}
+                </Text>
+
+                <View style={S.detailsSection}>
+                  <Text style={S.detailsSectionTitle}>📋 {t.info}</Text>
+                  <View style={S.detailsRow}>
+                    {selectedCar.city && <View style={S.detailsTag}><Text style={S.detailsTagText}>📍 {selectedCar.city}</Text></View>}
+                    {selectedCar.year && <View style={S.detailsTag}><Text style={S.detailsTagText}>📅 {selectedCar.year}</Text></View>}
+                    {selectedCar.km && <View style={S.detailsTag}><Text style={S.detailsTagText}>🛣️ {selectedCar.km?.toLocaleString()} km</Text></View>}
+                    {selectedCar.color && <View style={S.detailsTag}><Text style={S.detailsTagText}>🎨 {selectedCar.color}</Text></View>}
+                    {selectedCar.source && (
+                      <View style={[S.detailsTag, { backgroundColor: SOURCE_COLORS[selectedCar.source] || CT.tagBg }]}>
+                        <Text style={[S.detailsTagText, { color: SOURCE_TEXT[selectedCar.source] || CT.navy }]}>
+                          {PLATFORMS.find(p => p.id === selectedCar.source)?.emoji} {selectedCar.source}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+
+                <View style={S.detailsSection}>
+                  <Text style={S.detailsSectionTitle}>🤖 {t.priceAnalysis}</Text>
+                  <View style={[S.detailsEvalBox, { backgroundColor: getEvalBg(selectedCar.evaluation) }]}>
+                    <Text style={[S.detailsEvalText, { color: getEvalColor(selectedCar.evaluation) }]}>
+                      {getEvalEmoji(selectedCar.evaluation)} {selectedCar.evaluation || t.analyzing}
+                    </Text>
+                  </View>
+                </View>
+
+                {comparisons.length > 0 && (
+                  <View style={S.detailsSection}>
+                    <Text style={S.detailsSectionTitle}>🔄 {t.comparePlatforms}</Text>
+                    {comparisons.map((c, i) => (
+                      <TouchableOpacity
+                        key={i}
+                        style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 10, marginBottom: 6, borderRadius: 10, backgroundColor: CT.bg, borderWidth: 0.5, borderColor: CT.cardBorder }}
+                        onPress={() => openListing(c.link)}
+                      >
+                        <Text style={{ fontSize: 11, color: CT.textSecondary }}>
+                          {PLATFORMS.find(p => p.id === c.source)?.emoji} {c.source}
+                        </Text>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: c.price < selectedCar.price ? CT.activeGreen : CT.textPrimary }}>
+                          AED {c.price?.toLocaleString()}{c.price < selectedCar.price && ' 🥇'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+
+                <View style={S.detailsActions}>
+                  <TouchableOpacity
+                    style={[S.detailsActionBtn, { backgroundColor: fav ? CT.activeRedBg : CT.tagBg }]}
+                    onPress={() => toggleFavorite(selectedCar)}
+                  >
+                    <Ionicons name={fav ? 'heart' : 'heart-outline'} size={22} color={fav ? CT.heartActive : CT.heartInactive} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={S.detailsActionBtn} onPress={() => shareCar(selectedCar)}>
+                    <Ionicons name="share-social-outline" size={22} color={CT.navy} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={S.detailsOpenBtn} onPress={() => openListing(selectedCar.link)}>
+                    <Ionicons name="open-outline" size={18} color="#fff" />
+                    <Text style={S.detailsOpenBtnText}>{t.openListing}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+          </View>
         </View>
-        <TouchableOpacity style={S.dealOpenBtn} onPress={() => openListing(deal.link)}>
-          <Text style={S.dealOpenBtnText}>{t.openListing} ←</Text>
-        </TouchableOpacity>
-      </View>
+      </Modal>
     );
   };
 
   const renderHome = () => (
     <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
       {renderOnboarding()}
-      {allCars.length > 0 && renderDealOfDay()}
       <TouchableOpacity style={S.createBtnPrimary} onPress={() => { resetSearchModal(); setShowPicker(true); }}>
         <Ionicons name="add-circle-outline" size={20} color="#fff" />
         <Text style={S.createBtnPrimaryText}>{t.createSearch}</Text>
       </TouchableOpacity>
+
       <View style={S.secHdr}>
         {savedSearches.length > 0 && (
           <View style={S.countBadge}><Text style={S.countBadgeText}>{savedSearches.length}</Text></View>
         )}
         <Text style={S.secTitle}>{t.activeSearches}</Text>
       </View>
+
       {loadingSaved ? (
         <ActivityIndicator size="large" color={CT.blue} style={{ marginTop: 40 }} />
       ) : savedSearches.length === 0 ? (
@@ -894,21 +1125,11 @@ export default function Index() {
             <View style={{ flex: 1, marginLeft: 10 }}>
               <Text style={S.savedCardTitle}>{item.name || (item.brandLabel + ' ' + (item.model || ''))}</Text>
               {item.name && <Text style={S.savedCardSub}>{item.brandLabel} {item.model || ''}</Text>}
-              {item.platform && item.platform !== 'all' && (
-                <View style={[S.savedPlatBadge, { backgroundColor: CT.tagBg }]}>
-                  <Text style={{ fontSize: 9, color: CT.tagText }}>
-                    {PLATFORMS.find(p => p.id === item.platform)?.emoji} {item.platform}
-                  </Text>
-                </View>
-              )}
             </View>
           </View>
           <View style={S.tagsRow}>
             {item.yearFrom && <View style={S.tag}><Text style={S.tagText}>📅 {item.yearFrom}{item.yearTo ? '-' + item.yearTo : ''}</Text></View>}
             {item.minPrice && <View style={S.tag}><Text style={S.tagText}>💰 {item.minPrice}{item.maxPrice ? '-' + item.maxPrice : '+'}</Text></View>}
-            {item.condition && <View style={S.tag}><Text style={S.tagText}>{CONDITIONS.find(c => c.id === item.condition)?.emoji} {CONDITIONS.find(c => c.id === item.condition)?.[lang === 'ar' ? 'label' : 'labelEn']}</Text></View>}
-            {item.fuel && <View style={S.tag}><Text style={S.tagText}>{FUEL_TYPES.find(f => f.id === item.fuel)?.emoji} {FUEL_TYPES.find(f => f.id === item.fuel)?.[lang === 'ar' ? 'label' : 'labelEn']}</Text></View>}
-            {item.color && <View style={S.tag}><Text style={S.tagText}>🎨 {item.color}</Text></View>}
             {item.city && <View style={S.tag}><Text style={S.tagText}>📍 {item.city}</Text></View>}
           </View>
           <TouchableOpacity style={S.searchAgainBtn} onPress={() => {
@@ -919,7 +1140,8 @@ export default function Index() {
             setYearFrom(item.yearFrom || ''); setYearTo(item.yearTo || '');
             setSelectedCondition(item.condition || ''); setSelectedFuel(item.fuel || '');
             setSelectedColor(item.color || ''); setSelectedCity(item.city || '');
-            searchCars(item.model ? item.brand + ' ' + item.model : item.brand);
+            const keyword = item.model ? item.brand + ' ' + item.model : item.brand;
+            searchCars({ keyword, brand: item.brand, brandLabel: item.brandLabel, model: item.model, platform: item.platform || 'all', city: item.city });
           }}>
             <Text style={S.searchAgainText}>{t.searchNow}</Text>
           </TouchableOpacity>
@@ -929,164 +1151,95 @@ export default function Index() {
     </ScrollView>
   );
 
-  const renderCarCard = ({ item }) => {
-    const comparisons = getPlatformComparisons(item);
-    const cheapest = comparisons.length > 0 ? comparisons[0] : null;
-    const fav = isFavorite(item);
+  const renderResults = () => {
+    const hasCached = cachedSearchesList.length > 0;
+
     return (
-      <View style={S.card}>
-        {item.image ? (
-          <Image source={{ uri: item.image }} style={S.carImg} resizeMode="cover" />
-        ) : (
-          <View style={S.carImgPlaceholder}>
-            <Ionicons name="car-outline" size={42} color={CT.navy} />
+      <View style={{ flex: 1 }}>
+        {hasCached && (
+          <View style={S.cachedSearchesBar}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {cachedSearchesList.map(item => {
+                const isActive = activeSearchId === item.id;
+                const newCount = item.newLinks?.length || 0;
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[S.cachedSearchChip, isActive && S.cachedSearchChipActive]}
+                    onPress={() => setActiveSearchId(item.id)}
+                    onLongPress={() => {
+                      Alert.alert(t.deleteConfirm, '', [
+                        { text: lang === 'ar' ? 'إلغاء' : 'Cancel', style: 'cancel' },
+                        { text: lang === 'ar' ? 'حذف' : 'Delete', style: 'destructive', onPress: () => deleteCachedSearch(item.id) }
+                      ]);
+                    }}
+                  >
+                    <Text style={[S.cachedSearchChipText, isActive && S.cachedSearchChipTextActive]}>
+                      {item.searchInfo.brandLabel?.split('/')[0]?.trim() || item.searchInfo.brand}
+                      {item.searchInfo.model ? ' ' + item.searchInfo.model : ''}
+                    </Text>
+                    {newCount > 0 && (
+                      <View style={[S.cachedSearchChipCount, !isActive && { backgroundColor: CT.newBadge }]}>
+                        <Text style={[S.cachedSearchChipCountText, !isActive && { color: CT.newBadgeText }]}>{newCount}</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
         )}
-        <View style={S.cardBody}>
-          <View style={S.cardTopRow}>
-            {item.source && (
-              <View style={[S.sourceBadge, { backgroundColor: SOURCE_COLORS[item.source] || CT.tagBg }]}>
-                <Text style={[S.sourceText, { color: SOURCE_TEXT[item.source] || CT.navy }]}>
-                  {PLATFORMS.find(p => p.id === item.source)?.emoji || ''} {item.source}
-                  {item.account ? ` ${item.account}` : ''}
-                </Text>
-              </View>
-            )}
-            <View style={S.cardActions}>
-              <TouchableOpacity
-                style={[S.iconBtnHeart, { backgroundColor: fav ? (isDark ? '#2E0D0D' : '#FEE2E2') : CT.tagBg }]}
-                onPress={() => toggleFavorite(item)}
-              >
-                <Ionicons
-                  name={fav ? 'heart' : 'heart-outline'}
-                  size={18}
-                  color={fav ? CT.heartActive : CT.heartInactive}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity style={S.iconBtn} onPress={() => shareCar(item)}>
-                <Ionicons name="share-social-outline" size={16} color={CT.navy} />
-              </TouchableOpacity>
+
+        {activeCache && (
+          <View style={S.activeSearchHdr}>
+            <TouchableOpacity style={S.refreshBtn} onPress={() => refreshSearch(activeSearchId)} disabled={refreshing}>
+              {refreshing ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="refresh" size={14} color="#fff" />}
+              <Text style={S.refreshBtnText}>{refreshing ? t.refreshing : t.refresh}</Text>
+            </TouchableOpacity>
+            <View style={S.activeSearchInfo}>
+              <Text style={S.activeSearchTitle}>{activeResults.length} {t.results}</Text>
+              <Text style={S.activeSearchSub}>{t.lastUpdated}: {getRelativeTime(activeCache.savedAt, lang)}</Text>
             </View>
           </View>
-          <Text style={S.carName}>{item.name}</Text>
-          <Text style={S.carPrice}>
-            {item.price > 0 ? `AED ${item.price?.toLocaleString()}` : t.contactForPrice}
-          </Text>
-          {item.evaluation ? (
-            <View style={[S.evalBox, { backgroundColor: getEvalBg(item.evaluation) }]}>
-              <Text style={[S.evalText, { color: getEvalColor(item.evaluation) }]}>
-                {getEvalEmoji(item.evaluation)} {item.evaluation}
-              </Text>
-            </View>
-          ) : (
-            <View style={S.evalLoading}>
-              <Text style={S.evalLoadingText}>⏳ {t.analyzing}</Text>
-            </View>
-          )}
-          <View style={S.tagsRow}>
-            {item.city && <View style={S.tag}><Text style={S.tagText}>📍 {item.city}</Text></View>}
-            {item.year && <View style={S.tag}><Text style={S.tagText}>📅 {item.year}</Text></View>}
-            {item.km && <View style={S.tag}><Text style={S.tagText}>🛣️ {item.km?.toLocaleString()} km</Text></View>}
+        )}
+
+        {loading && (
+          <View style={S.loadingBox}>
+            <ActivityIndicator size="large" color={CT.blue} />
+            <Text style={S.loadingText}>{t.searching}</Text>
           </View>
-          <TouchableOpacity style={S.openBtn} onPress={() => openListing(item.link)}>
-            <Ionicons name="open-outline" size={15} color="#fff" />
-            <Text style={S.openBtnText}>{t.openListing}</Text>
-          </TouchableOpacity>
-          {comparisons.length > 0 && (
-            <View style={S.compareBox}>
-              <View style={S.compareHdr}>
-                <Text style={S.compareHdrSub}>{item.name?.split(' ').slice(0,3).join(' ')}</Text>
-                <Text style={S.compareHdrTitle}>🔄 {t.comparePlatforms}</Text>
-              </View>
-              {item.price > 0 && (
-                <View style={S.compareRow}>
-                  <View style={S.comparePriceRow}>
-                    {(!cheapest || item.price <= cheapest.price) && (
-                      <View style={S.compareBestBadge}><Text style={S.compareBestText}>🥇 {t.cheapest}</Text></View>
-                    )}
-                    <Text style={S.comparePrice}>AED {item.price?.toLocaleString()}</Text>
-                  </View>
-                  <Text style={S.comparePlat}>{PLATFORMS.find(p => p.id === item.source)?.emoji || ''} {item.source}</Text>
-                </View>
-              )}
-              {comparisons.map((c, i) => (
-                <View key={i} style={S.compareRow}>
-                  <View style={S.comparePriceRow}>
-                    {c.price < item.price && <View style={S.compareBestBadge}><Text style={S.compareBestText}>🥇 {t.cheapest}</Text></View>}
-                    {c.price > item.price && <Text style={S.compareDiff}>+{(c.price - item.price).toLocaleString()} ↑</Text>}
-                    <Text style={[S.comparePrice, c.price > item.price && { color: CT.textMuted }]}>AED {c.price?.toLocaleString()}</Text>
-                  </View>
-                  <Text style={S.comparePlat}>{PLATFORMS.find(p => p.id === c.source)?.emoji || ''} {c.source}</Text>
-                </View>
-              ))}
-              {cheapest && cheapest.price < item.price && (
-                <View style={S.compareFoot}>
-                  <TouchableOpacity style={S.compareFootBtn} onPress={() => openListing(cheapest.link)}>
-                    <Text style={S.compareFootBtnText}>{t.openCheapest} ←</Text>
-                  </TouchableOpacity>
-                  <Text style={S.compareFootText}>💸 {t.saveWith} {(item.price - cheapest.price).toLocaleString()} مع {cheapest.source}</Text>
-                </View>
-              )}
-            </View>
-          )}
-        </View>
+        )}
+
+        {!loading && !hasCached && (
+          <View style={S.emptyState}>
+            <View style={S.emptyCircle}><Ionicons name="search" size={38} color={CT.navy} /></View>
+            <Text style={S.emptyTitle}>{t.emptyTitle}</Text>
+            <Text style={S.emptySub}>{t.emptySub}</Text>
+            <TouchableOpacity style={S.emptyBtn} onPress={() => { resetSearchModal(); setShowPicker(true); }}>
+              <Text style={S.emptyBtnText}>{t.createSearch}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {!loading && hasCached && !activeCache && (
+          <View style={S.emptyState}>
+            <Text style={S.emptySub}>{t.tapSearchToView}</Text>
+          </View>
+        )}
+
+        {!loading && activeResults.length > 0 && (
+          <FlatList
+            data={activeResults}
+            keyExtractor={(_, i) => i.toString()}
+            numColumns={2}
+            columnWrapperStyle={{ justifyContent: 'space-between', paddingHorizontal: 16 }}
+            contentContainerStyle={{ paddingBottom: NAV_HEIGHT + 20, paddingTop: 4 }}
+            renderItem={renderGridCard}
+          />
+        )}
       </View>
     );
   };
-
-  const renderResults = () => (
-    <View style={{ flex: 1 }}>
-      <View style={S.feedTabsRow}>
-        {[{ id: 'all', label: t.all }, { id: 'filtered', label: t.filtered }, { id: 'featured', label: t.featured }].map(tab => (
-          <TouchableOpacity key={tab.id} style={[S.feedTab, feedTab === tab.id && S.feedTabOn]} onPress={() => setFeedTab(tab.id)}>
-            <Text style={[S.feedTabTxt, feedTab === tab.id && S.feedTabTxtOn]}>{tab.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      {loadingInstagram && (
-        <View style={S.igBanner}>
-          <ActivityIndicator size="small" color="#7C3AED" />
-          <Text style={S.igBannerText}>{t.searchingInstagram}</Text>
-        </View>
-      )}
-      {loading && (
-        <View style={S.loadingBox}>
-          <ActivityIndicator size="large" color={CT.blue} />
-          <Text style={S.loadingText}>{t.searching}</Text>
-        </View>
-      )}
-      {!loading && cars.length > 0 && (
-        <View style={S.resultsHdr}>
-          <TouchableOpacity style={S.saveSearchBtn} onPress={() => saveSearch(false)}>
-            <Ionicons name="bookmark-outline" size={13} color={CT.navy} />
-            <Text style={S.saveSearchText}>{t.saveSearch}</Text>
-          </TouchableOpacity>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Text style={S.resultsCount}>{cars.length} {t.results}</Text>
-            <TouchableOpacity onPress={() => { setAllCars([]); setCars([]); setActiveTab('home'); }}>
-              <Text style={S.backBtn}>{t.back}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-      {!loading && cars.length === 0 && (
-        <View style={S.emptyState}>
-          <View style={S.emptyCircle}><Ionicons name="search" size={38} color={CT.navy} /></View>
-          <Text style={S.emptyTitle}>{t.emptyTitle}</Text>
-          <Text style={S.emptySub}>{t.emptySub}</Text>
-          <TouchableOpacity style={S.emptyBtn} onPress={() => { resetSearchModal(); setShowPicker(true); }}>
-            <Text style={S.emptyBtnText}>{t.createSearch}</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-      <FlatList
-        data={cars}
-        keyExtractor={(_, i) => i.toString()}
-        contentContainerStyle={{ paddingBottom: NAV_HEIGHT + 20, paddingHorizontal: 14 }}
-        renderItem={renderCarCard}
-      />
-    </View>
-  );
 
   const renderFavorites = () => (
     <View style={{ flex: 1 }}>
@@ -1096,9 +1249,7 @@ export default function Index() {
       </View>
       {favorites.length === 0 ? (
         <View style={S.emptyState}>
-          <View style={S.emptyCircle}>
-            <Ionicons name="heart-outline" size={42} color={CT.navy} />
-          </View>
+          <View style={S.emptyCircle}><Ionicons name="heart-outline" size={42} color={CT.navy} /></View>
           <Text style={S.emptyTitle}>{t.favoritesEmpty}</Text>
           <Text style={S.emptySub}>{t.favoritesEmptySub}</Text>
         </View>
@@ -1106,8 +1257,10 @@ export default function Index() {
         <FlatList
           data={favorites}
           keyExtractor={(_, i) => i.toString()}
-          contentContainerStyle={{ paddingBottom: NAV_HEIGHT + 20, paddingHorizontal: 14, paddingTop: 4 }}
-          renderItem={renderCarCard}
+          numColumns={2}
+          columnWrapperStyle={{ justifyContent: 'space-between', paddingHorizontal: 16 }}
+          contentContainerStyle={{ paddingBottom: NAV_HEIGHT + 20, paddingTop: 4 }}
+          renderItem={renderGridCard}
         />
       )}
     </View>
@@ -1145,7 +1298,8 @@ export default function Index() {
             setSelectedBrand({ value: item.brand, label: item.brandLabel });
             setSelectedModel(item.model);
             setSelectedPlatform(item.platform || 'all');
-            searchCars(item.model ? item.brand + ' ' + item.model : item.brand);
+            const keyword = item.model ? item.brand + ' ' + item.model : item.brand;
+            searchCars({ keyword, brand: item.brand, brandLabel: item.brandLabel, model: item.model, platform: item.platform || 'all', city: item.city });
           }}>
             <Text style={S.searchAgainText}>{t.searchNow}</Text>
           </TouchableOpacity>
@@ -1177,21 +1331,6 @@ export default function Index() {
           <Ionicons name={isDark ? 'moon' : 'sunny'} size={20} color={isDark ? '#7F77DD' : '#F59E0B'} />
         </View>
       </View>
-      <Text style={S.settingsSecLabel}>{lang === 'ar' ? 'الإعدادات العامة' : 'General'}</Text>
-      <View style={S.settingsCard}>
-        {[
-          { label: lang === 'ar' ? 'إظهار تقدير السعر' : 'Show price estimate', on: true },
-          { label: lang === 'ar' ? 'مقارنة المنصات تلقائياً' : 'Auto platform comparison', on: true },
-          { label: lang === 'ar' ? 'فلتر التالفة' : 'Damaged filter', on: false },
-        ].map((row, i) => (
-          <View key={i} style={[S.settingsRow, i > 0 && S.settingsRowBorder]}>
-            <View style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: row.on ? CT.toggleOn : CT.toggleOff, justifyContent: 'center', padding: 2 }}>
-              <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', transform: [{ translateX: row.on ? 20 : 0 }] }} />
-            </View>
-            <Text style={S.settingsRowText}>{row.label}</Text>
-          </View>
-        ))}
-      </View>
       <Text style={S.settingsSecLabel}>{lang === 'ar' ? 'اللغة' : 'Language'}</Text>
       <View style={S.settingsCard}>
         <TouchableOpacity style={S.settingsRow} onPress={() => { setLang(lang === 'ar' ? 'en' : 'ar'); setSelectedCity(''); }}>
@@ -1209,7 +1348,7 @@ export default function Index() {
           <Text style={[S.settingsRowText, { color: '#EF4444' }]}>{lang === 'ar' ? 'تسجيل الخروج' : 'Logout'}</Text>
         </View>
       </View>
-      <Text style={S.versionText}>Version 1.0.0</Text>
+      <Text style={S.versionText}>Version 2.0.0</Text>
       <View style={{ height: NAV_HEIGHT + 20 }} />
     </ScrollView>
   );
@@ -1227,11 +1366,6 @@ export default function Index() {
                 <View style={S.badge}><Text style={S.badgeText}>{activeFiltersCount}</Text></View>
               )}
             </TouchableOpacity>
-            {activeTab === 'results' && (
-              <TouchableOpacity style={S.editFeedBtn} onPress={() => setShowPicker(true)}>
-                <Text style={S.editFeedText}>{t.editFeed}</Text>
-              </TouchableOpacity>
-            )}
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <TouchableOpacity
@@ -1250,7 +1384,11 @@ export default function Index() {
           <View style={S.headerSearchRow}>
             <TouchableOpacity
               style={[S.headerSearchBtn, { backgroundColor: '#534AB7' }]}
-              onPress={() => { if (headerSearch.trim()) searchCars(headerSearch.trim()); }}
+              onPress={() => {
+                if (headerSearch.trim()) {
+                  searchCars({ keyword: headerSearch.trim(), brand: headerSearch.trim(), brandLabel: headerSearch.trim(), model: null, platform: 'all', city: null });
+                }
+              }}
             >
               <Ionicons name="search" size={16} color="white" />
             </TouchableOpacity>
@@ -1261,7 +1399,11 @@ export default function Index() {
               placeholderTextColor="rgba(255,255,255,0.4)"
               value={headerSearch}
               onChangeText={setHeaderSearch}
-              onSubmitEditing={() => { if (headerSearch.trim()) searchCars(headerSearch.trim()); }}
+              onSubmitEditing={() => {
+                if (headerSearch.trim()) {
+                  searchCars({ keyword: headerSearch.trim(), brand: headerSearch.trim(), brandLabel: headerSearch.trim(), model: null, platform: 'all', city: null });
+                }
+              }}
               returnKeyType="search"
               autoFocus
             />
@@ -1295,7 +1437,9 @@ export default function Index() {
         })}
       </View>
 
-      {/* ===== MODAL إنشاء بحث — مع dropdowns جديدة ===== */}
+      {renderCarDetailsModal()}
+
+      {/* Modal إنشاء بحث */}
       <Modal visible={showPicker} animationType="slide" transparent>
         <View style={S.modalOverlay}>
           <View style={S.modalBox}>
@@ -1311,7 +1455,6 @@ export default function Index() {
                 </TouchableOpacity>
               </View>
 
-              {/* اسم البحث */}
               <Text style={S.sectionLabel}>{t.searchName}</Text>
               <TextInput
                 style={S.nameInput}
@@ -1321,7 +1464,6 @@ export default function Index() {
                 onChangeText={setSearchName}
               />
 
-              {/* نوع المركبة */}
               <Text style={S.sectionLabel}>{lang === 'ar' ? 'نوع المركبة' : 'Vehicle Type'}</Text>
               <View style={S.typeTabs}>
                 {vehicleTypes.map(type => (
@@ -1337,7 +1479,6 @@ export default function Index() {
                 ))}
               </View>
 
-              {/* Dropdown المنصات */}
               <Text style={S.sectionLabel}>🏪 {t.selectPlatform}</Text>
               <TouchableOpacity
                 style={[S.dropdownTrigger, platformsDropdownOpen && S.dropdownTriggerOpen]}
@@ -1370,7 +1511,6 @@ export default function Index() {
                 </View>
               )}
 
-              {/* Dropdown الشركة */}
               <Text style={S.sectionLabel}>🏭 {t.brand}</Text>
               <TouchableOpacity
                 style={[S.dropdownTrigger, brandDropdownOpen && S.dropdownTriggerOpen]}
@@ -1396,11 +1536,7 @@ export default function Index() {
                     onChangeText={setBrandSearchQuery}
                   />
                   <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
-                    {filteredBrands.length === 0 ? (
-                      <View style={S.dropdownEmpty}>
-                        <Text style={S.dropdownEmptyText}>—</Text>
-                      </View>
-                    ) : filteredBrands.map(brand => (
+                    {filteredBrands.map(brand => (
                       <TouchableOpacity
                         key={brand.value}
                         style={[S.dropdownItem, selectedBrand?.value === brand.value && S.dropdownItemActive]}
@@ -1419,26 +1555,25 @@ export default function Index() {
                 </View>
               )}
 
-              {/* Dropdown الموديل */}
-              <Text style={S.sectionLabel}>🚙 {t.model}</Text>
+              <Text style={S.sectionLabel}>🚗 {t.model}</Text>
               <TouchableOpacity
                 style={[
                   S.dropdownTrigger,
                   modelDropdownOpen && S.dropdownTriggerOpen,
                   !selectedBrand && S.dropdownTriggerDisabled,
                 ]}
-                disabled={!selectedBrand}
                 onPress={() => {
                   if (!selectedBrand) return;
                   setModelDropdownOpen(!modelDropdownOpen);
                   setPlatformsDropdownOpen(false); setBrandDropdownOpen(false);
                 }}
+                disabled={!selectedBrand}
               >
                 <Ionicons name={modelDropdownOpen ? 'chevron-up' : 'chevron-down'} size={18} color={CT.textSecondary} />
                 <Text style={[S.dropdownTriggerText, !selectedModel && S.dropdownTriggerPlaceholder]}>
-                  {selectedModel ? selectedModel : (selectedBrand ? t.selectModelHint : t.selectBrandFirst)}
+                  {selectedModel || (selectedBrand ? t.selectModelHint : t.selectBrandFirst)}
                 </Text>
-                <Ionicons name="options-outline" size={18} color={CT.textSecondary} style={{ marginLeft: 8 }} />
+                <Ionicons name="speedometer-outline" size={18} color={CT.textSecondary} style={{ marginLeft: 8 }} />
               </TouchableOpacity>
               {modelDropdownOpen && selectedBrand && (
                 <View style={S.dropdownList}>
@@ -1464,88 +1599,91 @@ export default function Index() {
                 </View>
               )}
 
-              {/* الحالة: جديد / مستعمل */}
-              <Text style={S.sectionLabel}>📦 {t.condition}</Text>
-              <View style={S.pillsRow}>
-                {CONDITIONS.map(c => (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={[S.pill, selectedCondition === c.id && S.pillOn]}
-                    onPress={() => setSelectedCondition(selectedCondition === c.id ? '' : c.id)}
-                  >
-                    <Text style={S.pillEmoji}>{c.emoji}</Text>
-                    <Text style={[S.pillText, selectedCondition === c.id && S.pillTextOn]}>
-                      {lang === 'ar' ? c.label : c.labelEn}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* نوع الوقود */}
-              <Text style={S.sectionLabel}>⛽ {t.fuelType}</Text>
-              <View style={S.pillsRow}>
-                {FUEL_TYPES.map(f => (
-                  <TouchableOpacity
-                    key={f.id}
-                    style={[S.pill, selectedFuel === f.id && S.pillOn]}
-                    onPress={() => setSelectedFuel(selectedFuel === f.id ? '' : f.id)}
-                  >
-                    <Text style={S.pillEmoji}>{f.emoji}</Text>
-                    <Text style={[S.pillText, selectedFuel === f.id && S.pillTextOn]}>
-                      {lang === 'ar' ? f.label : f.labelEn}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* سنة الصنع */}
               <Text style={S.sectionLabel}>📅 {t.yearRange}</Text>
               <View style={S.rangeRow}>
-                <TextInput style={S.rangeInput} placeholder={t.to} value={yearTo} onChangeText={setYearTo} keyboardType="numeric" textAlign="center" placeholderTextColor={CT.textMuted} maxLength={4} />
+                <TextInput style={S.rangeInput} placeholder={t.from} placeholderTextColor={CT.textMuted} value={yearFrom} onChangeText={setYearFrom} keyboardType="numeric" />
                 <Text style={S.rangeDash}>—</Text>
-                <TextInput style={S.rangeInput} placeholder={t.from} value={yearFrom} onChangeText={setYearFrom} keyboardType="numeric" textAlign="center" placeholderTextColor={CT.textMuted} maxLength={4} />
+                <TextInput style={S.rangeInput} placeholder={t.to} placeholderTextColor={CT.textMuted} value={yearTo} onChangeText={setYearTo} keyboardType="numeric" />
               </View>
 
-              {/* الميزانية */}
               <Text style={S.sectionLabel}>💰 {t.priceRange}</Text>
               <View style={S.rangeRow}>
-                <TextInput style={S.rangeInput} placeholder={t.to} value={maxPrice} onChangeText={setMaxPrice} keyboardType="numeric" textAlign="center" placeholderTextColor={CT.textMuted} />
+                <TextInput style={S.rangeInput} placeholder={t.from} placeholderTextColor={CT.textMuted} value={minPrice} onChangeText={setMinPrice} keyboardType="numeric" />
                 <Text style={S.rangeDash}>—</Text>
-                <TextInput style={S.rangeInput} placeholder={t.from} value={minPrice} onChangeText={setMinPrice} keyboardType="numeric" textAlign="center" placeholderTextColor={CT.textMuted} />
+                <TextInput style={S.rangeInput} placeholder={t.to} placeholderTextColor={CT.textMuted} value={maxPrice} onChangeText={setMaxPrice} keyboardType="numeric" />
               </View>
 
-              {/* اللون */}
+              <Text style={S.sectionLabel}>✨ {t.condition}</Text>
+              <View style={S.pillsRow}>
+                {CONDITIONS.map(c => {
+                  const on = selectedCondition === c.id;
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={[S.pill, on && S.pillOn]}
+                      onPress={() => setSelectedCondition(on ? '' : c.id)}
+                    >
+                      <Text style={S.pillEmoji}>{c.emoji}</Text>
+                      <Text style={[S.pillText, on && S.pillTextOn]}>{lang === 'ar' ? c.label : c.labelEn}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text style={S.sectionLabel}>⛽ {t.fuelType}</Text>
+              <View style={S.pillsRow}>
+                {FUEL_TYPES.map(f => {
+                  const on = selectedFuel === f.id;
+                  return (
+                    <TouchableOpacity
+                      key={f.id}
+                      style={[S.pill, on && S.pillOn]}
+                      onPress={() => setSelectedFuel(on ? '' : f.id)}
+                    >
+                      <Text style={S.pillEmoji}>{f.emoji}</Text>
+                      <Text style={[S.pillText, on && S.pillTextOn]}>{lang === 'ar' ? f.label : f.labelEn}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
               <Text style={S.sectionLabel}>🎨 {t.color}</Text>
               <View style={S.colorsGrid}>
-                {colorList.map((color, index) => (
-                  <TouchableOpacity key={color} style={S.colorItem} onPress={() => setSelectedColor(selectedColor === color ? '' : color)}>
-                    <View style={[S.colorCircle, { backgroundColor: COLOR_HEX[index] }, COLOR_HEX[index] === '#FFFFFF' && { borderColor: CT.textMuted }, selectedColor === color && S.colorCircleOn]} />
-                    <Text style={[S.colorLabel, selectedColor === color && S.colorLabelOn]}>{color}</Text>
-                  </TouchableOpacity>
-                ))}
+                {colorList.map((color, idx) => {
+                  const on = selectedColor === color;
+                  return (
+                    <TouchableOpacity
+                      key={color}
+                      style={S.colorItem}
+                      onPress={() => setSelectedColor(on ? '' : color)}
+                    >
+                      <View style={[S.colorCircle, { backgroundColor: COLOR_HEX[idx] }, on && S.colorCircleOn]} />
+                      <Text style={[S.colorLabel, on && S.colorLabelOn]}>{color}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
-              {/* أزرار */}
               <View style={S.modalBtnsRow}>
                 <TouchableOpacity
                   style={S.modalBtnSecondary}
-                  disabled={!selectedBrand}
                   onPress={() => {
                     if (!selectedBrand) return;
-                    searchCars(selectedModel ? selectedBrand.value + ' ' + selectedModel : selectedBrand.value, false);
+                    const keyword = selectedModel ? selectedBrand.value + ' ' + selectedModel : selectedBrand.value;
+                    searchCars({ keyword, brand: selectedBrand.value, brandLabel: selectedBrand.label, model: selectedModel, platform: selectedPlatform, city: selectedCity }, true);
                   }}
                 >
-                  <Text style={[S.modalBtnSecondaryText, !selectedBrand && { opacity: 0.4 }]}>{t.searchNow}</Text>
+                  <Text style={S.modalBtnSecondaryText}>💾 {t.saveAndSearch}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={S.modalBtnPrimary}
-                  disabled={!selectedBrand}
                   onPress={() => {
                     if (!selectedBrand) return;
-                    searchCars(selectedModel ? selectedBrand.value + ' ' + selectedModel : selectedBrand.value, true);
+                    const keyword = selectedModel ? selectedBrand.value + ' ' + selectedModel : selectedBrand.value;
+                    searchCars({ keyword, brand: selectedBrand.value, brandLabel: selectedBrand.label, model: selectedModel, platform: selectedPlatform, city: selectedCity });
                   }}
                 >
-                  <Text style={[S.modalBtnPrimaryText, !selectedBrand && { opacity: 0.4 }]}>💾 {t.saveAndSearch}</Text>
+                  <Text style={S.modalBtnPrimaryText}>{t.searchNow}</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -1553,37 +1691,46 @@ export default function Index() {
         </View>
       </Modal>
 
-      {/* Modal الفلاتر المتقدمة (مدينة + كيلومترات فقط) */}
+      {/* Modal فلاتر */}
       <Modal visible={showFilters} animationType="slide" transparent>
         <View style={S.modalOverlay}>
           <View style={S.modalBox}>
             <View style={S.modalHandle} />
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={S.modalHdr}>
-                <TouchableOpacity onPress={resetFilters}><Text style={S.resetText}>{t.reset}</Text></TouchableOpacity>
-                <Text style={S.modalTitle}>{t.advancedFilters}</Text>
+                <TouchableOpacity onPress={resetFilters}>
+                  <Text style={S.resetText}>{t.reset}</Text>
+                </TouchableOpacity>
+                <Text style={S.modalTitle}>{t.searchFilters}</Text>
                 <TouchableOpacity onPress={() => setShowFilters(false)}>
                   <Ionicons name="close" size={22} color={CT.textSecondary} />
                 </TouchableOpacity>
               </View>
-              <Text style={S.filterLabel}>🛣️ {t.km}</Text>
-              <View style={S.rangeRow}>
-                <TextInput style={S.rangeInput} placeholder={t.to} value={kmTo} onChangeText={setKmTo} keyboardType="numeric" textAlign="center" placeholderTextColor={CT.textMuted} />
-                <Text style={S.rangeDash}>—</Text>
-                <TextInput style={S.rangeInput} placeholder={t.from} value={kmFrom} onChangeText={setKmFrom} keyboardType="numeric" textAlign="center" placeholderTextColor={CT.textMuted} />
-              </View>
+
               <Text style={S.filterLabel}>📍 {t.city}</Text>
               <View style={S.chipsWrap}>
-                {cities.map(city => (
-                  <TouchableOpacity key={city} style={[S.chip, selectedCity === city && S.chipOn]} onPress={() => setSelectedCity(selectedCity === city ? '' : city)}>
-                    <Text style={[S.chipText, selectedCity === city && S.chipTextOn]}>{city}</Text>
-                  </TouchableOpacity>
-                ))}
+                {cities.map(c => {
+                  const on = selectedCity === c || (c === cities[0] && !selectedCity);
+                  return (
+                    <TouchableOpacity
+                      key={c}
+                      style={[S.chip, on && S.chipOn]}
+                      onPress={() => setSelectedCity(c === cities[0] ? '' : c)}
+                    >
+                      <Text style={[S.chipText, on && S.chipTextOn]}>{c}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-              <TouchableOpacity style={S.applyBtn} onPress={() => {
-                setShowFilters(false);
-                if (selectedBrand) searchCars(selectedModel ? selectedBrand.value + ' ' + selectedModel : selectedBrand.value);
-              }}>
+
+              <Text style={S.filterLabel}>🛣️ {t.km}</Text>
+              <View style={S.rangeRow}>
+                <TextInput style={S.rangeInput} placeholder={t.from} placeholderTextColor={CT.textMuted} value={kmFrom} onChangeText={setKmFrom} keyboardType="numeric" />
+                <Text style={S.rangeDash}>—</Text>
+                <TextInput style={S.rangeInput} placeholder={t.to} placeholderTextColor={CT.textMuted} value={kmTo} onChangeText={setKmTo} keyboardType="numeric" />
+              </View>
+
+              <TouchableOpacity style={S.applyBtn} onPress={() => setShowFilters(false)}>
                 <Text style={S.applyBtnText}>{t.applySearch}</Text>
               </TouchableOpacity>
             </ScrollView>
