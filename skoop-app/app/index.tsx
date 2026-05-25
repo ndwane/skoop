@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
   StyleSheet, ActivityIndicator, ScrollView, Modal,
-  Alert, Linking, Image, StatusBar, Share, Dimensions, Animated
+  Alert, Linking, Image, StatusBar, Share, Dimensions, Animated, RefreshControl
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1326,6 +1326,14 @@ const getPlatformComparisons = (car, allCars) => {
             columnWrapperStyle={{ justifyContent: 'space-between', paddingHorizontal: 16 }}
             contentContainerStyle={{ paddingBottom: NAV_HEIGHT + 20, paddingTop: 4 }}
             renderItem={renderGridCard}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => activeSearchId && refreshSearch(activeSearchId)}
+                colors={[CT.navy]}
+                tintColor={CT.navy}
+              />
+            }
           />
         )}
       </View>
@@ -1352,6 +1360,14 @@ const getPlatformComparisons = (car, allCars) => {
           columnWrapperStyle={{ justifyContent: 'space-between', paddingHorizontal: 16 }}
           contentContainerStyle={{ paddingBottom: NAV_HEIGHT + 20, paddingTop: 4 }}
           renderItem={renderGridCard}
+          refreshControl={
+            <RefreshControl
+              refreshing={false}
+              onRefresh={loadFavorites}
+              colors={[CT.navy]}
+              tintColor={CT.navy}
+            />
+          }
         />
       )}
     </View>
