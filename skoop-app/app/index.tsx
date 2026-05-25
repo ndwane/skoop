@@ -923,8 +923,8 @@ const getPlatformComparisons = (car, allCars) => {
     newBadgeText: { color: CT.newBadgeText, fontSize: 9, fontWeight: '900' },
 
     // ===== Modal تفاصيل =====
-    detailsModalBox: { backgroundColor: CT.modalBg, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '92%' },
-    detailsHandle: { width: 40, height: 4, backgroundColor: CT.cardBorder, borderRadius: 2, alignSelf: 'center', marginVertical: 12 },
+    detailsModalBox: { backgroundColor: CT.modalBg, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '92%', shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 20 },
+    detailsHandle: { width: 44, height: 5, backgroundColor: CT.cardBorder, borderRadius: 3, alignSelf: 'center', marginVertical: 14 },
     detailsHdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12 },
     detailsTitle: { color: CT.textPrimary, fontSize: 16, fontWeight: 'bold' },
     detailsImg: { width: '100%', height: 220 },
@@ -971,9 +971,9 @@ const getPlatformComparisons = (car, allCars) => {
     navLabel: { fontSize: 10, color: CT.textMuted, marginTop: 2 },
     navLabelOn: { color: CT.blue, fontWeight: '700' },
 
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-    modalBox: { backgroundColor: CT.modalBg, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: '94%' },
-    modalHandle: { width: 40, height: 4, backgroundColor: CT.cardBorder, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
+    modalBox: { backgroundColor: CT.modalBg, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, maxHeight: '94%', shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 20 },
+    modalHandle: { width: 44, height: 5, backgroundColor: CT.cardBorder, borderRadius: 3, alignSelf: 'center', marginBottom: 18 },
     modalHdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
     modalTitle: { color: CT.textPrimary, fontSize: 17, fontWeight: 'bold' },
     resetText: { color: CT.blue, fontSize: 14 },
@@ -1128,7 +1128,7 @@ const getPlatformComparisons = (car, allCars) => {
     const fav = isFavorite(selectedCar);
 
     return (
-      <Modal visible={showCarDetails} animationType="slide" transparent onRequestClose={() => setShowCarDetails(false)}>
+      <Modal visible={showCarDetails} animationType="slide" transparent statusBarTranslucent onRequestClose={() => setShowCarDetails(false)}>
         <View style={S.modalOverlay}>
           <View style={S.detailsModalBox}>
             <View style={S.detailsHandle} />
@@ -1622,7 +1622,7 @@ const getPlatformComparisons = (car, allCars) => {
       </View>
 
       {/* 📧 Modal تواصل معنا */}
-      <Modal visible={showContact} animationType="slide" transparent onRequestClose={() => setShowContact(false)}>
+      <Modal visible={showContact} animationType="slide" transparent statusBarTranslucent onRequestClose={() => setShowContact(false)}>
         <View style={S.modalOverlay}>
           <View style={S.detailsModalBox}>
             <View style={S.detailsHandle} />
@@ -1693,7 +1693,7 @@ const getPlatformComparisons = (car, allCars) => {
         </View>
       </Modal>
       {/* 📑 Modal كل البحوث المحفوظة */}
-      <Modal visible={showAllSearches} animationType="slide" transparent onRequestClose={() => setShowAllSearches(false)}>
+      <Modal visible={showAllSearches} animationType="slide" transparent statusBarTranslucent onRequestClose={() => setShowAllSearches(false)}>
         <View style={S.modalOverlay}>
           <View style={[S.detailsModalBox, { padding: 0 }]}>
             <View style={S.detailsHandle} />
@@ -1772,7 +1772,7 @@ const getPlatformComparisons = (car, allCars) => {
       {renderCarDetailsModal()}
 
       {/* Modal إنشاء بحث */}
-      <Modal visible={showPicker} animationType="slide" transparent>
+      <Modal visible={showPicker} animationType="slide" transparent statusBarTranslucent>
         <View style={S.modalOverlay}>
           <View style={S.modalBox}>
             <View style={S.modalHandle} />
@@ -2024,7 +2024,7 @@ const getPlatformComparisons = (car, allCars) => {
       </Modal>
 
       {/* Modal فلاتر */}
-      <Modal visible={showFilters} animationType="slide" transparent>
+      <Modal visible={showFilters} animationType="slide" transparent statusBarTranslucent>
         <View style={S.modalOverlay}>
           <View style={S.modalBox}>
             <View style={S.modalHandle} />
