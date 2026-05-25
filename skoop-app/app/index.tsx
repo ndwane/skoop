@@ -157,6 +157,17 @@ const TRANSLATIONS = {
     justNow: 'الآن',
     tapSearchToView: 'اضغط على بحث في الأعلى لعرض نتائجه',
     info: 'المعلومات',
+    contactUs: 'تواصل معنا',
+    contactSubject: 'الموضوع',
+    contactSubjectPh: 'مثال: اقتراح ميزة جديدة',
+    contactMessage: 'الرسالة',
+    contactMessagePh: 'اكتب رسالتك هنا...',
+    contactSend: '📤 إرسال',
+    contactSending: 'جاري الإرسال...',
+    contactSuccess: '✅ تم إرسال رسالتك! سنرد قريباً',
+    contactError: 'حدث خطأ، حاول مرة أخرى',
+    contactEmptyFields: 'الرجاء تعبئة الموضوع والرسالة',
+    contactOr: 'أو تواصل مباشرة:',
   },
   en: {
     home: 'Home', results_tab: 'Results', saved: 'Saved',
@@ -220,6 +231,17 @@ const TRANSLATIONS = {
     justNow: 'now',
     tapSearchToView: 'Tap a search above to view its results',
     info: 'Info',
+    contactUs: 'Contact Us',
+    contactSubject: 'Subject',
+    contactSubjectPh: 'e.g. Feature suggestion',
+    contactMessage: 'Message',
+    contactMessagePh: 'Write your message here...',
+    contactSend: '📤 Send',
+    contactSending: 'Sending...',
+    contactSuccess: '✅ Message sent! We will reply soon',
+    contactError: 'Error, please try again',
+    contactEmptyFields: 'Please fill subject and message',
+    contactOr: 'Or contact directly:',
   }
 };
 
@@ -418,6 +440,36 @@ export default function Index() {
   const [selectedCar, setSelectedCar] = useState(null);
   const [showCarDetails, setShowCarDetails] = useState(false);
   const [showAllSearches, setShowAllSearches] = useState(false);
+  const [showContact, setShowContact] = useState(false);
+  const [contactSubject, setContactSubject] = useState('');
+  const [contactMessage, setContactMessage] = useState('');
+  const [sendingContact, setSendingContact] = useState(false);
+
+  const sendContactMessage = async () => {
+    if (!contactSubject.trim() || !contactMessage.trim()) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('', t.contactEmptyFields);
+      return;
+    }
+    setSendingContact(true);
+    try {
+      await addDoc(collection(db, 'contact_messages'), {
+        subject: contactSubject.trim(),
+        message: contactMessage.trim(),
+        createdAt: new Date().toISOString(),
+        lang: lang,
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('', t.contactSuccess);
+      setContactSubject('');
+      setContactMessage('');
+      setShowContact(false);
+    } catch (e) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('', t.contactError);
+    }
+    setSendingContact(false);
+  };
 
   const vehicleTypes = [
     { id: 'cars', label: t.cars, icon: 'car-outline' },
@@ -1470,6 +1522,16 @@ const getPlatformComparisons = (car, allCars) => {
           <Text style={[S.settingsRowText, { color: '#EF4444' }]}>{lang === 'ar' ? 'تسجيل الخروج' : 'Logout'}</Text>
         </View>
       </View>
+      <Text style={S.settingsSecLabel}>{lang === 'ar' ? 'الدعم' : 'Support'}</Text>
+      <View style={S.settingsCard}>
+        <TouchableOpacity
+          style={S.settingsRow}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowContact(true); }}
+        >
+          <Ionicons name="chevron-back" size={16} color={CT.textMuted} />
+          <Text style={[S.settingsRowText, { textAlign: 'right' }]}>📧 {t.contactUs}</Text>
+        </TouchableOpacity>
+      </View>
       <Text style={S.versionText}>Version 2.0.0</Text>
       <View style={{ height: NAV_HEIGHT + 20 }} />
     </ScrollView>
@@ -1559,6 +1621,77 @@ const getPlatformComparisons = (car, allCars) => {
         })}
       </View>
 
+      {/* 📧 Modal تواصل معنا */}
+      <Modal visible={showContact} animationType="slide" transparent onRequestClose={() => setShowContact(false)}>
+        <View style={S.modalOverlay}>
+          <View style={S.detailsModalBox}>
+            <View style={S.detailsHandle} />
+            <View style={S.detailsHdr}>
+              <TouchableOpacity onPress={() => setShowContact(false)}>
+                <Ionicons name="close" size={24} color={CT.textSecondary} />
+              </TouchableOpacity>
+              <Text style={S.detailsTitle}>📧 {t.contactUs}</Text>
+              <View style={{ width: 24 }} />
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+              <Text style={S.sectionLabel}>{t.contactSubject}</Text>
+              <TextInput
+                style={S.nameInput}
+                placeholder={t.contactSubjectPh}
+                placeholderTextColor={CT.textMuted}
+                value={contactSubject}
+                onChangeText={setContactSubject}
+                editable={!sendingContact}
+              />
+
+              <Text style={S.sectionLabel}>{t.contactMessage}</Text>
+              <TextInput
+                style={[S.nameInput, { height: 140, textAlignVertical: 'top', paddingTop: 12 }]}
+                placeholder={t.contactMessagePh}
+                placeholderTextColor={CT.textMuted}
+                value={contactMessage}
+                onChangeText={setContactMessage}
+                multiline
+                editable={!sendingContact}
+              />
+
+              <TouchableOpacity
+                style={[S.applyBtn, { marginTop: 8, marginBottom: 20, opacity: sendingContact ? 0.6 : 1 }]}
+                onPress={sendContactMessage}
+                disabled={sendingContact}
+              >
+                {sendingContact ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={S.applyBtnText}>{t.contactSend}</Text>
+                )}
+              </TouchableOpacity>
+
+              <View style={{ height: 1, backgroundColor: CT.cardBorder, marginBottom: 20 }} />
+
+              <Text style={{ fontSize: 12, color: CT.textMuted, textAlign: 'right', marginBottom: 12 }}>
+                {t.contactOr}
+              </Text>
+
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10, padding: 12, backgroundColor: CT.tagBg, borderRadius: 10, marginBottom: 8 }}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); Linking.openURL('tel:0555441940'); }}
+              >
+                <Text style={{ fontSize: 14, color: CT.textPrimary, fontWeight: '600' }}>0555441940</Text>
+                <Ionicons name="call" size={18} color={CT.navy} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10, padding: 12, backgroundColor: CT.tagBg, borderRadius: 10 }}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); Linking.openURL('mailto:NDWANEK@GMAIL.COM'); }}
+              >
+                <Text style={{ fontSize: 14, color: CT.textPrimary, fontWeight: '600' }}>NDWANEK@GMAIL.COM</Text>
+                <Ionicons name="mail" size={18} color={CT.navy} />
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
       {/* 📑 Modal كل البحوث المحفوظة */}
       <Modal visible={showAllSearches} animationType="slide" transparent onRequestClose={() => setShowAllSearches(false)}>
         <View style={S.modalOverlay}>
