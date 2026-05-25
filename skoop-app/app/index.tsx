@@ -324,6 +324,24 @@ const getRelativeTime = (timestamp, lang) => {
 };
 
 // ✨ مكوّن Shimmer للبطاقات الوهمية
+// 🎬 مكوّن أيقونة Empty State المتحركة
+const PulsingIcon = ({ name, size = 56, color }) => {
+  const pulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.15, duration: 1000, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 1000, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+  return (
+    <Animated.View style={{ transform: [{ scale: pulse }] }}>
+      <Ionicons name={name} size={size} color={color} />
+    </Animated.View>
+  );
+};
+
 const ShimmerBox = ({ style, isDark }) => {
   const shimmer = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -1165,9 +1183,12 @@ const getPlatformComparisons = (car, allCars) => {
         <ActivityIndicator size="large" color={CT.blue} style={{ marginTop: 40 }} />
       ) : savedSearches.length === 0 ? (
         <View style={S.emptyState}>
-          <View style={S.emptyCircle}><Ionicons name="search" size={38} color={CT.navy} /></View>
+          <View style={S.emptyCircle}><PulsingIcon name="car-sport-outline" size={48} color={CT.navy} /></View>
           <Text style={S.emptyTitle}>{t.emptyTitle}</Text>
           <Text style={S.emptySub}>{t.emptySub}</Text>
+          <TouchableOpacity style={[S.emptyBtn, { marginTop: 20 }]} onPress={() => { resetSearchModal(); setShowPicker(true); }}>
+            <Text style={S.emptyBtnText}>🚀 {t.createSearch}</Text>
+          </TouchableOpacity>
         </View>
       ) : savedSearches.map(item => (
         <View key={item.id} style={S.savedCard}>
@@ -1282,7 +1303,7 @@ const getPlatformComparisons = (car, allCars) => {
 
         {!loading && !hasCached && (
           <View style={S.emptyState}>
-            <View style={S.emptyCircle}><Ionicons name="search" size={38} color={CT.navy} /></View>
+            <View style={S.emptyCircle}><PulsingIcon name="search" size={48} color={CT.navy} /></View>
             <Text style={S.emptyTitle}>{t.emptyTitle}</Text>
             <Text style={S.emptySub}>{t.emptySub}</Text>
             <TouchableOpacity style={S.emptyBtn} onPress={() => { resetSearchModal(); setShowPicker(true); }}>
@@ -1319,7 +1340,7 @@ const getPlatformComparisons = (car, allCars) => {
       </View>
       {favorites.length === 0 ? (
         <View style={S.emptyState}>
-          <View style={S.emptyCircle}><Ionicons name="heart-outline" size={42} color={CT.navy} /></View>
+          <View style={S.emptyCircle}><PulsingIcon name="heart-outline" size={48} color={CT.activeRed} /></View>
           <Text style={S.emptyTitle}>{t.favoritesEmpty}</Text>
           <Text style={S.emptySub}>{t.favoritesEmptySub}</Text>
         </View>
@@ -1346,7 +1367,7 @@ const getPlatformComparisons = (car, allCars) => {
         <ActivityIndicator size="large" color={CT.blue} style={{ marginTop: 40 }} />
       ) : savedSearches.length === 0 ? (
         <View style={S.emptyState}>
-          <View style={S.emptyCircle}><Ionicons name="bookmark-outline" size={38} color={CT.navy} /></View>
+          <View style={S.emptyCircle}><PulsingIcon name="bookmark-outline" size={48} color={CT.navy} /></View>
           <Text style={S.emptyTitle}>{t.emptyTitle}</Text>
           <Text style={S.emptySub}>{t.emptySub}</Text>
           <TouchableOpacity style={S.emptyBtn} onPress={() => { resetSearchModal(); setShowPicker(true); }}>
