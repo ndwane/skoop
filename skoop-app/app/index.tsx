@@ -417,6 +417,7 @@ export default function Index() {
   // Modal تفاصيل السيارة
   const [selectedCar, setSelectedCar] = useState(null);
   const [showCarDetails, setShowCarDetails] = useState(false);
+  const [showAllSearches, setShowAllSearches] = useState(false);
 
   const vehicleTypes = [
     { id: 'cars', label: t.cars, icon: 'car-outline' },
@@ -1238,6 +1239,15 @@ const getPlatformComparisons = (car, allCars) => {
         {hasCached && (
           <View style={S.cachedSearchesBar}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <TouchableOpacity
+                style={[S.cachedSearchChip, { backgroundColor: CT.navyDark, borderColor: CT.navyDark }]}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowAllSearches(true); }}
+              >
+                <Ionicons name="grid-outline" size={14} color="#fff" />
+                <Text style={[S.cachedSearchChipText, { color: '#fff', fontWeight: '700' }]}>
+                  {lang === 'ar' ? `عرض الكل (${cachedSearchesList.length})` : `View All (${cachedSearchesList.length})`}
+                </Text>
+              </TouchableOpacity>
               {cachedSearchesList.map(item => {
                 const isActive = activeSearchId === item.id;
                 const newCount = item.newLinks?.length || 0;
@@ -1549,6 +1559,83 @@ const getPlatformComparisons = (car, allCars) => {
         })}
       </View>
 
+      {/* 📑 Modal كل البحوث المحفوظة */}
+      <Modal visible={showAllSearches} animationType="slide" transparent onRequestClose={() => setShowAllSearches(false)}>
+        <View style={S.modalOverlay}>
+          <View style={[S.detailsModalBox, { padding: 0 }]}>
+            <View style={S.detailsHandle} />
+            <View style={S.detailsHdr}>
+              <TouchableOpacity onPress={() => setShowAllSearches(false)}>
+                <Ionicons name="close" size={24} color={CT.textSecondary} />
+              </TouchableOpacity>
+              <Text style={S.detailsTitle}>
+                {lang === 'ar' ? `كل البحوث (${cachedSearchesList.length})` : `All Searches (${cachedSearchesList.length})`}
+              </Text>
+              <View style={{ width: 24 }} />
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+              {cachedSearchesList.map(item => {
+                const isActive = activeSearchId === item.id;
+                const newCount = item.newLinks?.length || 0;
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      backgroundColor: isActive ? CT.tagBg : CT.card,
+                      borderRadius: 12,
+                      padding: 14,
+                      marginBottom: 10,
+                      borderWidth: 1,
+                      borderColor: isActive ? CT.navyDark : CT.cardBorder,
+                    }}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setActiveSearchId(item.id);
+                      setShowAllSearches(false);
+                    }}
+                    onLongPress={() => {
+                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                      Alert.alert(t.deleteConfirm, '', [
+                        { text: lang === 'ar' ? 'إلغاء' : 'Cancel', style: 'cancel' },
+                        { text: lang === 'ar' ? 'حذف' : 'Delete', style: 'destructive', onPress: () => deleteCachedSearch(item.id) }
+                      ]);
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      {newCount > 0 && (
+                        <View style={{ backgroundColor: CT.newBadge, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 }}>
+                          <Text style={{ color: CT.newBadgeText, fontSize: 11, fontWeight: '700' }}>+{newCount}</Text>
+                        </View>
+                      )}
+                      <Ionicons name="chevron-back" size={18} color={CT.textMuted} />
+                    </View>
+                    <View style={{ flex: 1, marginRight: 10 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: CT.textPrimary, textAlign: 'right' }}>
+                        {item.searchInfo.brandLabel?.split('/')[0]?.trim() || item.searchInfo.brand}
+                        {item.searchInfo.model ? ' ' + item.searchInfo.model : ''}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: CT.textMuted, textAlign: 'right', marginTop: 2 }}>
+                        {item.results?.length || 0} {t.results} · {getRelativeTime(item.savedAt, lang)}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+              {cachedSearchesList.length === 0 && (
+                <View style={{ alignItems: 'center', padding: 40 }}>
+                  <PulsingIcon name="folder-open-outline" size={48} color={CT.navy} />
+                  <Text style={{ color: CT.textMuted, fontSize: 14, marginTop: 16 }}>
+                    {lang === 'ar' ? 'لا توجد بحوث محفوظة' : 'No saved searches'}
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
       {renderCarDetailsModal()}
 
       {/* Modal إنشاء بحث */}
