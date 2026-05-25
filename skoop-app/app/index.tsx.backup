@@ -322,7 +322,6 @@ const getRelativeTime = (timestamp, lang) => {
   if (hours < 24) return `${hours} ${t.hoursAgo}`;
   return `${days} ${t.daysAgo}`;
 };
-
 // ✨ مكوّن Shimmer للبطاقات الوهمية
 const ShimmerBox = ({ style, isDark }) => {
   const shimmer = useRef(new Animated.Value(0)).current;
@@ -343,6 +342,7 @@ const ShimmerBox = ({ style, isDark }) => {
   });
   return <Animated.View style={[style, { backgroundColor: bgColor }]} />;
 };
+
 
 export default function Index() {
   const insets = useSafeAreaInsets();
@@ -398,6 +398,18 @@ export default function Index() {
   // Modal تفاصيل السيارة
   const [selectedCar, setSelectedCar] = useState(null);
   const [showCarDetails, setShowCarDetails] = useState(false);
+  // 🍞 Toast state
+  const [toast, setToast] = useState(null);
+  const toastAnim = useRef(new Animated.Value(0)).current;
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    Animated.sequence([
+      Animated.timing(toastAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
+      Animated.delay(2500),
+      Animated.timing(toastAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]).start(() => setToast(null));
+  };
 
   const vehicleTypes = [
     { id: 'cars', label: t.cars, icon: 'car-outline' },
@@ -520,10 +532,10 @@ export default function Index() {
         color: selectedColor || null,
         createdAt: new Date().toISOString(),
       });
-      if (!auto) Alert.alert(t.savedTitle, t.savedSuccess);
+      if (!auto) showToast(t.savedSuccess, 'success');
       loadSavedSearches();
     } catch (e) {
-      if (!auto) Alert.alert(t.errorTitle, t.errorSave);
+      if (!auto) showToast(t.errorSave, 'error');
     }
   };
 
@@ -701,12 +713,9 @@ export default function Index() {
           } catch (e) {}
         });
 
-        Alert.alert(
-          '🎉 ' + (lang === 'ar' ? 'سيارات جديدة' : 'New cars'),
-          `${trulyNew.length} ${t.newCarsFound}`
-        );
+        showToast(`🎉 ${trulyNew.length} ${t.newCarsFound}`, 'success');
       } else {
-        Alert.alert('', t.noNewCars);
+        showToast(t.noNewCars, 'info');
         await saveCachedSearch(searchId, cached.searchInfo, cached.results, []);
       }
     } catch (e) {
@@ -1507,7 +1516,47 @@ const getPlatformComparisons = (car, allCars) => {
         })}
       </View>
 
-      {renderCarDetailsModal()}
+      {renderCarDetailsModal()
+      {/* 🍞 Toast Notification */}
+      {toast && (
+        <Animated.View
+          style={{
+            position: 'absolute',
+            top: insets.top + 20,
+            left: 20,
+            right: 20,
+            backgroundColor: toast.type === 'success' ? '#16A34A' : toast.type === 'error' ? '#DC2626' : '#2563EB',
+            borderRadius: 12,
+            padding: 14,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 10,
+            zIndex: 9999,
+            elevation: 10,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.2,
+            shadowRadius: 8,
+            opacity: toastAnim,
+            transform: [{
+              translateY: toastAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [-100, 0],
+              }),
+            }],
+          }}
+        >
+          <Ionicons
+            name={toast.type === 'success' ? 'checkmark-circle' : toast.type === 'error' ? 'alert-circle' : 'information-circle'}
+            size={22}
+            color="#fff"
+          />
+          <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600', flex: 1, textAlign: 'right' }}>
+            {toast.message}
+          </Text>
+        </Animated.View>
+      )}}
 
       {/* Modal إنشاء بحث */}
       <Modal visible={showPicker} animationType="slide" transparent>
