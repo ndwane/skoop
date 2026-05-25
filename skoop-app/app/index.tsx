@@ -444,6 +444,7 @@ export default function Index() {
   const [contactSubject, setContactSubject] = useState('');
   const [contactMessage, setContactMessage] = useState('');
   const [sendingContact, setSendingContact] = useState(false);
+  
 
   const sendContactMessage = async () => {
     if (!contactSubject.trim() || !contactMessage.trim()) {
