@@ -17,6 +17,8 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "firebase-admin": "^13.10.0",
-    "node-cron": "^4.2.1"
+    "node-cron": "^4.2.1",
+    "react-native-safe-area-context": "^5.7.0",
+    "undefined": "react-native-svg\\"
   }
 }

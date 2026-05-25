@@ -562,6 +562,30 @@ export default function Index() {
 
     if (saveOnSearch && selectedBrand) saveSearch(true);
 
+    // 🚀 Instagram بالتوازي
+    fetchInstagram(keyword).then(igResults => {
+      if (igResults.length > 0) {
+        setCachedSearches(prev => {
+          const updated = { ...prev };
+          if (!updated[searchId]) {
+            updated[searchId] = {
+              searchInfo: { keyword, brand, brandLabel, model, platform, city },
+              results: igResults,
+              savedAt: Date.now(),
+              newLinks: [],
+            };
+          } else {
+            const seen = new Set(updated[searchId].results.map(c => c.link));
+            const newOnes = igResults.filter(c => !seen.has(c.link));
+            updated[searchId].results = [...updated[searchId].results, ...newOnes];
+          }
+          AsyncStorage.setItem('scoop_cached_searches', JSON.stringify(updated));
+          return updated;
+        });
+        setLoading(false);
+      }
+    });
+
     try {
       const params = new URLSearchParams({ q: keyword });
       if (minPrice) params.append('minPrice', minPrice);
@@ -586,6 +610,7 @@ export default function Index() {
       await saveCachedSearch(searchId, {
         keyword, brand, brandLabel, model, platform, city
       }, results, []);
+      setLoading(false); // ⚡ Streaming: قفل اللودينق فور وصول نتائج Dubizzle
 
       // تحليل AI في الخلفية
       results.forEach(async (car, index) => {
@@ -605,20 +630,7 @@ export default function Index() {
         } catch (e) {}
       });
 
-      // Instagram
-      const igResults = await fetchInstagram(keyword);
-      if (igResults.length > 0) {
-        setCachedSearches(prev => {
-          const updated = { ...prev };
-          if (updated[searchId]) {
-            const seen = new Set(updated[searchId].results.map(c => c.link));
-            const newOnes = igResults.filter(c => !seen.has(c.link));
-            updated[searchId].results = [...updated[searchId].results, ...newOnes];
-            AsyncStorage.setItem('scoop_cached_searches', JSON.stringify(updated));
-          }
-          return updated;
-        });
-      }
+      
     } catch (e) {
       console.log('Search error:', e);
     }
