@@ -7,6 +7,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import Svg, { Line, Circle, Text as SvgText } from 'react-native-svg';
 import { db, collection, addDoc, getDocs, deleteDoc, doc } from '../firebase';
 import { registerForPushNotifications, setupNotificationHandler } from '../notifications';
@@ -463,6 +464,7 @@ export default function Index() {
   const isFavorite = (item) => favorites.some(f => f.link === item.link);
 
   const toggleFavorite = async (item) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const exists = isFavorite(item);
     let newFavs;
     if (exists) {
@@ -524,6 +526,7 @@ export default function Index() {
 
   const saveSearch = async (auto = false) => {
     if (!selectedBrand) return;
+    if (!auto) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     try {
       const autoName = selectedBrand.label.split('/')[0].trim() + (selectedModel ? ' ' + selectedModel : '');
       await addDoc(collection(db, 'searches'), {
@@ -546,6 +549,7 @@ export default function Index() {
   };
 
   const deleteSearch = async (id) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     Alert.alert(
       t.deleteConfirm, '',
       [
@@ -590,6 +594,7 @@ export default function Index() {
   const searchCars = async (searchInfo, saveOnSearch = false) => {
     const { keyword, brand, brandLabel, model, platform, city } = searchInfo;
     if (!keyword) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     const searchId = `${brand}_${model || 'all'}_${platform || 'all'}_${city || 'all'}`;
     setLoading(true);
