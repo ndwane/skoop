@@ -12,7 +12,7 @@ import Svg, { Line, Circle, Text as SvgText } from 'react-native-svg';
 import { db, collection, addDoc, getDocs, deleteDoc, doc } from '../firebase';
 import { registerForPushNotifications, setupNotificationHandler } from '../notifications';
 
-const API_URL = 'https://skoop-production.up.railway.app';
+const API_URL = 'https://api.scoopuae.ae';
 const CACHE_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // أسبوع
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
