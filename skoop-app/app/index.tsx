@@ -629,7 +629,7 @@ export default function Index() {
 
   const shareCar = async (item) => {
     try {
-      const msg = `🚗 ${item.name}\n💰 AED ${item.price?.toLocaleString()}\n📍 ${item.city || ''}\n🔗 ${item.link}\n\nعبر تطبيق سكوب 🔍`;
+      const msg = `🚗 ${item.name}\n💰 AED ${item.price?.toLocaleString()}\n📍 ${item.city || ''}\n🔗 ${item.link}\n\nعبر تطبيق Scoop UAE 🔍`;
       await Share.share({ message: msg });
     } catch (e) {}
   };
