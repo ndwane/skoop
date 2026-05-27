@@ -11,6 +11,7 @@ import * as Haptics from 'expo-haptics';
 import Svg, { Line, Circle, Text as SvgText } from 'react-native-svg';
 import { db, collection, addDoc, getDocs, deleteDoc, doc } from '../firebase';
 import { registerForPushNotifications, setupNotificationHandler } from '../notifications';
+import { router } from 'expo-router';
 
 const API_URL = 'https://api.scoopuae.ae';
 const CACHE_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // أسبوع
@@ -1550,6 +1551,9 @@ const getPlatformComparisons = (car, allCars) => {
               {activeFiltersCount > 0 && (
                 <View style={S.badge}><Text style={S.badgeText}>{activeFiltersCount}</Text></View>
               )}
+            </TouchableOpacity>
+            <TouchableOpacity style={S.headerIconBtn} onPress={() => router.push('/login')}>
+              <Ionicons name="person-outline" size={20} color="white" />
             </TouchableOpacity>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
