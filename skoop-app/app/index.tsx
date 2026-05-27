@@ -522,6 +522,17 @@ export default function Index() {
   const isFavorite = (item) => favorites.some(f => f.link === item.link);
 
   const toggleFavorite = async (item) => {
+    if (!isLoggedIn) {
+      Alert.alert(
+        'Sign In Required',
+        'Please sign in to save favorites',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => router.push('/login') }
+        ]
+      );
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const exists = isFavorite(item);
     let newFavs;
@@ -584,6 +595,19 @@ export default function Index() {
 
   const saveSearch = async (auto = false) => {
     if (!selectedBrand) return;
+    if (!isLoggedIn) {
+      if (!auto) {
+        Alert.alert(
+          'Sign In Required',
+          'Please sign in to save searches',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Sign In', onPress: () => router.push('/login') }
+          ]
+        );
+      }
+      return;
+    }
     if (!auto) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     try {
       const autoName = selectedBrand.label.split('/')[0].trim() + (selectedModel ? ' ' + selectedModel : '');
@@ -1519,13 +1543,21 @@ const getPlatformComparisons = (car, allCars) => {
       </View>
       <Text style={S.settingsSecLabel}>{lang === 'ar' ? 'الحساب' : 'Account'}</Text>
       <View style={S.settingsCard}>
-        <View style={S.settingsRow}>
+        <TouchableOpacity
+          style={S.settingsRow}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setShowProfileModal(true);
+          }}
+        >
           <Text style={S.settingsRowText}>{lang === 'ar' ? 'الملف الشخصي' : 'Profile'}</Text>
           <Ionicons name="chevron-forward" size={16} color={CT.textMuted} />
-        </View>
-        <View style={[S.settingsRow, S.settingsRowBorder]}>
+        </TouchableOpacity>
+        {isLoggedIn && (
+        <TouchableOpacity style={[S.settingsRow, S.settingsRowBorder]} onPress={async () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); await signOut(); }}>
           <Text style={[S.settingsRowText, { color: '#EF4444' }]}>{lang === 'ar' ? 'تسجيل الخروج' : 'Logout'}</Text>
-        </View>
+        </TouchableOpacity>
+        )}
       </View>
       <Text style={S.settingsSecLabel}>{lang === 'ar' ? 'الدعم' : 'Support'}</Text>
       <View style={S.settingsCard}>
@@ -1555,8 +1587,8 @@ const getPlatformComparisons = (car, allCars) => {
                 <View style={S.badge}><Text style={S.badgeText}>{activeFiltersCount}</Text></View>
               )}
             </TouchableOpacity>
-            <TouchableOpacity style={S.headerIconBtn} onPress={() => router.push('/login')}>
-              <Ionicons name="person-outline" size={20} color="white" />
+            <TouchableOpacity style={S.headerIconBtn} onPress={() => setShowProfileModal(true)}>
+              <Ionicons name={isLoggedIn ? "person" : "person-outline"} size={20} color="white" />
             </TouchableOpacity>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -2077,6 +2109,155 @@ const getPlatformComparisons = (car, allCars) => {
           </View>
         </View>
       </Modal>
+
+      {/* Profile Modal */}
+      <Modal visible={showProfileModal} transparent animationType="fade" onRequestClose={() => setShowProfileModal(false)}>
+        <TouchableOpacity style={profileStyles.overlay} activeOpacity={1} onPress={() => setShowProfileModal(false)}>
+          <TouchableOpacity activeOpacity={1} style={profileStyles.modal} onPress={(e) => e.stopPropagation()}>
+            {isLoggedIn ? (
+              <>
+                <View style={profileStyles.avatar}>
+                  <Ionicons name="person" size={40} color="#fff" />
+                </View>
+                <Text style={profileStyles.name}>{user?.displayName || 'User'}</Text>
+                <Text style={profileStyles.email}>{user?.email}</Text>
+
+                <TouchableOpacity
+                  style={profileStyles.logoutBtn}
+                  onPress={async () => {
+                    setShowProfileModal(false);
+                    await signOut();
+                  }}
+                >
+                  <Ionicons name="log-out-outline" size={20} color="#fff" />
+                  <Text style={profileStyles.logoutText}>Sign Out</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <View style={profileStyles.avatar}>
+                  <Ionicons name="person-outline" size={40} color="#fff" />
+                </View>
+                <Text style={profileStyles.welcomeText}>Welcome to Scoop UAE</Text>
+                <Text style={profileStyles.welcomeSubtext}>Sign in to save favorites and listings</Text>
+
+                <TouchableOpacity
+                  style={profileStyles.signInBtn}
+                  onPress={() => {
+                    setShowProfileModal(false);
+                    router.push('/login');
+                  }}
+                >
+                  <Text style={profileStyles.signInText}>Sign In</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={profileStyles.signUpBtn}
+                  onPress={() => {
+                    setShowProfileModal(false);
+                    router.push('/signup');
+                  }}
+                >
+                  <Text style={profileStyles.signUpText}>Create Account</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
+
+const profileStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modal: {
+    backgroundColor: '#1a1f5c',
+    borderRadius: 20,
+    padding: 32,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+  },
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#2563d9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  name: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  email: {
+    fontSize: 14,
+    color: '#a0aef5',
+    marginBottom: 24,
+  },
+  welcomeText: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#fff',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  welcomeSubtext: {
+    fontSize: 14,
+    color: '#a0aef5',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#dc2626',
+    borderRadius: 12,
+    height: 50,
+    width: '100%',
+    gap: 8,
+  },
+  logoutText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  signInBtn: {
+    backgroundColor: '#2563d9',
+    borderRadius: 12,
+    height: 50,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  signInText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  signUpBtn: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    height: 50,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  signUpText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});

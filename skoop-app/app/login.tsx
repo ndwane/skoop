@@ -20,6 +20,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -91,12 +92,20 @@ export default function LoginScreen() {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity
-            style={styles.forgotPassword}
-            onPress={() => router.push('/forgot-password')}
-          >
-            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-          </TouchableOpacity>
+          <View style={styles.rememberRow}>
+            <TouchableOpacity 
+              style={styles.rememberMe}
+              onPress={() => setRememberMe(!rememberMe)}
+            >
+              <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
+                {rememberMe && <Ionicons name="checkmark" size={14} color="#fff" />}
+              </View>
+              <Text style={styles.rememberText}>Remember me</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/forgot-password')}>
+              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity
             style={[styles.loginButton, loading && styles.loginButtonDisabled]}
@@ -192,6 +201,34 @@ const styles = StyleSheet.create({
     flex: 1,
     color: '#fff',
     fontSize: 16,
+  },
+  rememberRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  rememberMe: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: '#a0aef5',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: '#2563d9',
+    borderColor: '#2563d9',
+  },
+  rememberText: {
+    color: '#a0aef5',
+    fontSize: 14,
   },
   forgotPassword: {
     alignItems: 'flex-end',
