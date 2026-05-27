@@ -12,6 +12,7 @@ import Svg, { Line, Circle, Text as SvgText } from 'react-native-svg';
 import { db, collection, addDoc, getDocs, deleteDoc, doc } from '../firebase';
 import { registerForPushNotifications, setupNotificationHandler } from '../notifications';
 import { router } from 'expo-router';
+import { useAuth } from '../contexts/AuthContext';
 
 const API_URL = 'https://api.scoopuae.ae';
 const CACHE_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // أسبوع
@@ -388,6 +389,8 @@ const ShimmerBox = ({ style, isDark }) => {
 
 export default function Index() {
   const insets = useSafeAreaInsets();
+  const { user, isLoggedIn, signOut } = useAuth();
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [lang, setLang] = useState('ar');
   const [isDark, setIsDark] = useState(false);
   const CT = isDark ? DARK : LIGHT;
