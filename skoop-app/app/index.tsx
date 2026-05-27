@@ -1547,7 +1547,7 @@ const getPlatformComparisons = (car, allCars) => {
           style={S.settingsRow}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setShowProfileModal(true);
+            router.push('/profile');
           }}
         >
           <Text style={S.settingsRowText}>{lang === 'ar' ? 'الملف الشخصي' : 'Profile'}</Text>

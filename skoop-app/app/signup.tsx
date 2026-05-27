@@ -12,7 +12,8 @@ import {
   ScrollView,
 } from 'react-native';
 import { router } from 'expo-router';
-import { auth, createUserWithEmailAndPassword, updateProfile } from '../firebase';
+import { auth, createUserWithEmailAndPassword, updateProfile, db, doc } from '../firebase';
+import { setDoc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function SignUpScreen() {
@@ -20,6 +21,7 @@ export default function SignUpScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [birthYear, setBirthYear] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -32,6 +34,15 @@ export default function SignUpScreen() {
       Alert.alert('Error', 'Passwords do not match');
       return;
     }
+    if (birthYear) {
+      const year = parseInt(birthYear);
+      const currentYear = new Date().getFullYear();
+      if (isNaN(year) || year < 1920 || year > currentYear - 16) {
+        Alert.alert('Error', `Please enter a valid birth year (1920 - ${currentYear - 16})`);
+        return;
+      }
+    }
+
     if (password.length < 6) {
       Alert.alert('Error', 'Password must be at least 6 characters');
       return;
@@ -46,6 +57,12 @@ export default function SignUpScreen() {
       );
       if (userCredential.user) {
         await updateProfile(userCredential.user, { displayName: name.trim() });
+        await setDoc(doc(db, 'users', userCredential.user.uid), {
+          name: name.trim(),
+          email: email.trim(),
+          birthYear: birthYear ? parseInt(birthYear) : null,
+          createdAt: new Date().toISOString(),
+        });
       }
       router.replace('/');
     } catch (error: any) {
@@ -133,6 +150,19 @@ export default function SignUpScreen() {
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry={!showPassword}
+            />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Ionicons name="calendar-outline" size={20} color="#888" style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Birth Year (Optional)"
+              placeholderTextColor="#888"
+              value={birthYear}
+              onChangeText={setBirthYear}
+              keyboardType="numeric"
+              maxLength={4}
             />
           </View>
 
