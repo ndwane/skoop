@@ -39,6 +39,12 @@
             "backgroundColor": "#0D0A1E"
           }
         }
+      ],
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.672721547327-cpmh2h220nj9ji7dcm1n1amngeqd2caq"
+        }
       ]
     ],
     "experiments": {
@@ -50,6 +56,12 @@
       "eas": {
         "projectId": "03c344de-03cc-43e8-afc6-5f08c933ec68"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/03c344de-03cc-43e8-afc6-5f08c933ec68"
     }
   }
 }

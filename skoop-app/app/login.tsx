@@ -22,6 +22,22 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    try {
+      await GoogleSignin.hasPlayServices();
+      const userInfo = await GoogleSignin.signIn();
+      const idToken = (userInfo as any).data?.idToken || (userInfo as any).idToken;
+      const credential = GoogleAuthProvider.credential(idToken);
+      await signInWithCredential(auth, credential);
+      router.replace('/');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Google Sign-In failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert('Error', 'Please enter email and password');
