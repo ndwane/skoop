@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,8 +12,9 @@ import {
   ScrollView,
 } from 'react-native';
 import { router } from 'expo-router';
-import { auth, createUserWithEmailAndPassword, updateProfile, db, doc } from '../firebase';
-import { setDoc } from 'firebase/firestore';
+import { auth, createUserWithEmailAndPassword, updateProfile, db, doc, GoogleAuthProvider, signInWithCredential } from '../firebase';
+import { setDoc, getDoc } from 'firebase/firestore';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function SignUpScreen() {
@@ -24,6 +25,39 @@ export default function SignUpScreen() {
   const [birthYear, setBirthYear] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    GoogleSignin.configure({
+      webClientId: '672721547327-cpmh2h220nj9ji7dcm1n1amngeqd2caq.apps.googleusercontent.com',
+    });
+  }, []);
+
+  const handleGoogleSignUp = async () => {
+    setLoading(true);
+    try {
+      await GoogleSignin.hasPlayServices();
+      const userInfo = await GoogleSignin.signIn();
+      const idToken = (userInfo as any).data?.idToken || (userInfo as any).idToken;
+      const credential = GoogleAuthProvider.credential(idToken);
+      const userCredential = await signInWithCredential(auth, credential);
+      const user = userCredential.user;
+      const userRef = doc(db, 'users', user.uid);
+      const snap = await getDoc(userRef);
+      if (!snap.exists()) {
+        await setDoc(userRef, {
+          name: user.displayName || '',
+          email: user.email || '',
+          birthYear: null,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      router.replace('/');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Google Sign-Up failed');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSignUp = async () => {
     if (!name || !email || !password || !confirmPassword) {
@@ -179,6 +213,21 @@ export default function SignUpScreen() {
           </TouchableOpacity>
         </View>
 
+        <View style={styles.divider}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>OR</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        <TouchableOpacity
+          style={styles.googleButton}
+          onPress={handleGoogleSignUp}
+          disabled={loading}
+        >
+          <Ionicons name="logo-google" size={20} color="#fff" />
+          <Text style={styles.googleButtonText}>Sign up with Google</Text>
+        </TouchableOpacity>
+
         <View style={styles.loginContainer}>
           <Text style={styles.loginText}>Already have an account?</Text>
           <TouchableOpacity onPress={() => router.replace('/login')}>
@@ -268,5 +317,35 @@ const styles = StyleSheet.create({
     color: '#4a90e2',
     fontSize: 14,
     fontWeight: '700',
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 24,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  dividerText: {
+    color: '#a0aef5',
+    marginHorizontal: 16,
+    fontSize: 14,
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    height: 56,
+    marginBottom: 12,
+    gap: 12,
+  },
+  googleButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
