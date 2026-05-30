@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "672721547327",
+    "project_id": "skoop-c0bc3",
+    "storage_bucket": "skoop-c0bc3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:672721547327:android:834b949be1bc304fa1888a",
+        "android_client_info": {
+          "package_name": "com.ndwane.skoopapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "672721547327-cpmh2h220nj9ji7dcm1n1amngeqd2caq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA6SdWgWTI12ogUoZ8LfA83brmkzA_TEAw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "672721547327-cpmh2h220nj9ji7dcm1n1amngeqd2caq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
