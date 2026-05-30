@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,8 +12,9 @@ import {
   ScrollView,
 } from 'react-native';
 import { router } from 'expo-router';
-import { auth, signInWithEmailAndPassword } from '../firebase';
+import { auth, signInWithEmailAndPassword, GoogleAuthProvider, signInWithCredential } from '../firebase';
 import { Ionicons } from '@expo/vector-icons';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -21,6 +22,12 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+
+  useEffect(() => {
+    GoogleSignin.configure({
+      webClientId: '672721547327-cpmh2h220nj9ji7dcm1n1amngeqd2caq.apps.googleusercontent.com',
+    });
+  }, []);
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
@@ -144,7 +151,7 @@ export default function LoginScreen() {
 
         <TouchableOpacity
           style={styles.socialButton}
-          onPress={() => Alert.alert('Coming Soon', 'Google Sign-In coming soon')}
+          onPress={handleGoogleSignIn}
         >
           <Ionicons name="logo-google" size={20} color="#fff" />
           <Text style={styles.socialButtonText}>Continue with Google</Text>
