@@ -12,9 +12,10 @@ import {
   ScrollView,
 } from 'react-native';
 import { router } from 'expo-router';
-import { auth, signInWithEmailAndPassword, GoogleAuthProvider, signInWithCredential } from '../firebase';
+import { auth, signInWithEmailAndPassword, GoogleAuthProvider, signInWithCredential, db, doc } from '../firebase';
 import { Ionicons } from '@expo/vector-icons';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import { setDoc, getDoc } from 'firebase/firestore';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -36,7 +37,18 @@ export default function LoginScreen() {
       const userInfo = await GoogleSignin.signIn();
       const idToken = (userInfo as any).data?.idToken || (userInfo as any).idToken;
       const credential = GoogleAuthProvider.credential(idToken);
-      await signInWithCredential(auth, credential);
+      const userCredential = await signInWithCredential(auth, credential);
+      const user = userCredential.user;
+      const userRef = doc(db, 'users', user.uid);
+      const snap = await getDoc(userRef);
+      if (!snap.exists()) {
+        await setDoc(userRef, {
+          name: user.displayName || '',
+          email: user.email || '',
+          birthYear: null,
+          createdAt: new Date().toISOString(),
+        });
+      }
       router.replace('/');
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Google Sign-In failed');
