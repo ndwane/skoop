@@ -10,13 +10,12 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import Svg, { Line, Circle, Text as SvgText } from 'react-native-svg';
-import { db, collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from '../firebase';
+import { db, collection, addDoc, getDocs, deleteDoc, doc } from '../firebase';
 import { router } from 'expo-router';
 import { useAuth } from '../contexts/AuthContext';
 
 const MAX_IMAGES = 5;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const ADMIN_EMAILS = ['ndwanek@gmail.com'];
 
 const LIGHT = {
   hdrBg: '#26215C', bg: '#F8F6FF', card: '#FFFFFF', cardBorder: '#E8E4FF',
@@ -139,14 +138,10 @@ export default function Index() {
   const CT = isDark ? DARK : LIGHT;
   const cities = CITIES[lang];
 
-  const isAdmin = isLoggedIn && user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
-
   const [activeTab, setActiveTab] = useState('home');
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   const [parts, setParts] = useState([]);
-  const [pendingParts, setPendingParts] = useState([]);
-  const [loadingPending, setLoadingPending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
@@ -192,46 +187,6 @@ export default function Index() {
     } catch (e) { console.log('load parts error:', e); }
     setLoading(false);
     setRefreshing(false);
-  };
-
-  const loadPending = async () => {
-    setLoadingPending(true);
-    try {
-      const snap = await getDocs(collection(db, 'parts'));
-      let list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      list = list.filter(p => p.status === 'pending');
-      list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-      setPendingParts(list);
-    } catch (e) {
-      console.log('load pending error:', e);
-    }
-    setLoadingPending(false);
-  };
-
-  const approvePart = async (id) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    try {
-      await updateDoc(doc(db, 'parts', id), { status: 'approved' });
-      setPendingParts(prev => prev.filter(p => p.id !== id));
-      loadParts();
-    } catch (e) {
-      Alert.alert('خطأ', 'لم تتم الموافقة، حاول مرة أخرى');
-    }
-  };
-
-  const rejectPart = async (id) => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    Alert.alert('رفض الإعلان؟', 'سيتم حذف الإعلان نهائياً.', [
-      { text: 'إلغاء', style: 'cancel' },
-      { text: 'حذف', style: 'destructive', onPress: async () => {
-        try {
-          await deleteDoc(doc(db, 'parts', id));
-          setPendingParts(prev => prev.filter(p => p.id !== id));
-        } catch (e) {
-          Alert.alert('خطأ', 'لم يتم الحذف');
-        }
-      }}
-    ]);
   };
 
   const resetPostForm = () => {
@@ -386,19 +341,6 @@ export default function Index() {
     settingsRowText: { fontSize: 14, color: CT.textPrimary, flex: 1 },
     settingsRowSub: { fontSize: 11, color: CT.textMuted, marginTop: 2 },
     versionText: { textAlign: 'center', color: CT.textMuted, fontSize: 12, marginTop: 10 },
-    adminHdr: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 4 },
-    adminTitle: { fontSize: 18, fontWeight: '700', color: CT.textPrimary, textAlign: 'right' },
-    adminSub: { fontSize: 12, color: CT.textMuted, textAlign: 'right', marginTop: 4 },
-    adminCard: { backgroundColor: CT.card, borderRadius: 14, marginHorizontal: 16, marginBottom: 12, padding: 14, borderWidth: 0.5, borderColor: CT.cardBorder },
-    adminCardImg: { width: '100%', height: 160, borderRadius: 10, marginBottom: 10 },
-    adminCardName: { fontSize: 16, fontWeight: '700', color: CT.textPrimary, textAlign: 'right', marginBottom: 4 },
-    adminCardInfo: { fontSize: 12, color: CT.textSecondary, textAlign: 'right', marginBottom: 2 },
-    adminCardPrice: { fontSize: 16, fontWeight: 'bold', color: CT.navy, textAlign: 'right', marginBottom: 10 },
-    adminBtns: { flexDirection: 'row', gap: 8 },
-    approveBtn: { flex: 1, backgroundColor: CT.activeGreen, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-    approveText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
-    rejectBtn: { flex: 1, backgroundColor: CT.activeRedBg, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: CT.activeRed },
-    rejectText: { color: CT.activeRed, fontWeight: 'bold', fontSize: 14 },
   });
 
   const renderCard = ({ item }) => (
@@ -453,53 +395,6 @@ export default function Index() {
         <Ionicons name="add" size={22} color="#fff" />
         <Text style={S.fabText}>أضف قطعة</Text>
       </TouchableOpacity>
-    </View>
-  );
-
-  const renderAdmin = () => (
-    <View style={{ flex: 1 }}>
-      <View style={S.adminHdr}>
-        <Text style={S.adminTitle}>موافقة الإعلانات 🛡️</Text>
-        <Text style={S.adminSub}>{pendingParts.length > 0 ? `${pendingParts.length} إعلان بانتظار الموافقة` : 'لا توجد إعلانات منتظرة'}</Text>
-      </View>
-      {loadingPending ? (
-        <ActivityIndicator size="large" color={CT.navy} style={{ marginTop: 40 }} />
-      ) : pendingParts.length === 0 ? (
-        <View style={S.emptyState}>
-          <PulsingIcon name="checkmark-done-circle-outline" size={56} color={CT.activeGreen} />
-          <Text style={S.emptyTitle}>كل شيء تمام ✅</Text>
-          <Text style={S.emptySub}>لا توجد إعلانات تنتظر الموافقة حالياً.</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={pendingParts}
-          keyExtractor={item => item.id}
-          contentContainerStyle={{ paddingBottom: NAV_HEIGHT + 20, paddingTop: 8 }}
-          refreshControl={<RefreshControl refreshing={loadingPending} onRefresh={loadPending} colors={[CT.navy]} tintColor={CT.navy} />}
-          renderItem={({ item }) => (
-            <View style={S.adminCard}>
-              {item.images && item.images.length > 0 && (
-                <Image source={{ uri: item.images[0] }} style={S.adminCardImg} resizeMode="cover" />
-              )}
-              <Text style={S.adminCardName}>{item.partName}</Text>
-              <Text style={S.adminCardInfo}>🚗 {item.carBrand || item.brandLabel || ''}</Text>
-              <Text style={S.adminCardInfo}>📍 {item.city} · 📞 {item.phone}</Text>
-              {item.notes ? <Text style={S.adminCardInfo}>📝 {item.notes}</Text> : null}
-              <Text style={S.adminCardPrice}>{item.price > 0 ? `${item.price.toLocaleString()} د.إ` : '—'}</Text>
-              <View style={S.adminBtns}>
-                <TouchableOpacity style={S.approveBtn} onPress={() => approvePart(item.id)}>
-                  <Ionicons name="checkmark" size={18} color="#fff" />
-                  <Text style={S.approveText}>موافقة</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={S.rejectBtn} onPress={() => rejectPart(item.id)}>
-                  <Ionicons name="trash-outline" size={16} color={CT.activeRed} />
-                  <Text style={S.rejectText}>رفض</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        />
-      )}
     </View>
   );
 
@@ -563,18 +458,16 @@ export default function Index() {
       <View style={{ flex: 1 }}>
         {activeTab === 'home' && renderHome()}
         {activeTab === 'settings' && renderSettings()}
-        {activeTab === 'admin' && renderAdmin()}
       </View>
 
       <View style={[S.bottomNav, { paddingBottom: insets.bottom + 8 }]}>
         {[
           { id: 'home', iconOff: 'home-outline', iconOn: 'home', label: 'القطع' },
-          ...(isAdmin ? [{ id: 'admin', iconOff: 'shield-outline', iconOn: 'shield', label: 'الإدارة' }] : []),
           { id: 'settings', iconOff: 'settings-outline', iconOn: 'settings', label: 'إعدادات' },
         ].map(tab => {
           const isOn = activeTab === tab.id;
           return (
-            <TouchableOpacity key={tab.id} style={S.navItem} onPress={() => { setActiveTab(tab.id); if (tab.id === 'admin') loadPending(); }}>
+            <TouchableOpacity key={tab.id} style={S.navItem} onPress={() => setActiveTab(tab.id)}>
               <Ionicons name={isOn ? tab.iconOn : tab.iconOff} size={24} color={isOn ? CT.blue : CT.textMuted} />
               <Text style={[S.navLabel, isOn && S.navLabelOn]}>{tab.label}</Text>
             </TouchableOpacity>

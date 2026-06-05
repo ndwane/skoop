@@ -9,21 +9,23 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+
+const MAX_IMAGES = 5;
 import Svg, { Line, Circle, Text as SvgText } from 'react-native-svg';
-import { db, collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from '../firebase';
+import { db, collection, addDoc, getDocs, deleteDoc, doc } from '../firebase';
 import { router } from 'expo-router';
 import { useAuth } from '../contexts/AuthContext';
 
-const MAX_IMAGES = 5;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const ADMIN_EMAILS = ['ndwanek@gmail.com'];
 
+// ===== THEME COLORS =====
 const LIGHT = {
   hdrBg: '#26215C', bg: '#F8F6FF', card: '#FFFFFF', cardBorder: '#E8E4FF',
   textPrimary: '#26215C', textSecondary: '#534AB7', textMuted: '#9B96CC',
   navy: '#534AB7', navyDark: '#26215C', blue: '#534AB7', blueLight: '#AFA9EC',
   tagBg: '#F0EEFF', tagText: '#3C3489', inputBg: '#F0EEFF',
-  navBg: '#FFFFFF', navBorder: '#E8E4FF', modalBg: '#FFFFFF',
+  navBg: '#FFFFFF', navBorder: '#E8E4FF',
+  modalBg: '#FFFFFF',
   activeGreen: '#16A34A', activeGreenBg: '#DCFCE7',
   activeRed: '#DC2626', activeRedBg: '#FEE2E2',
   activeYellow: '#F59E0B', activeYellowBg: '#FEF3C7',
@@ -35,7 +37,8 @@ const DARK = {
   textPrimary: '#EEEDFE', textSecondary: '#AFA9EC', textMuted: '#534AB7',
   navy: '#7F77DD', navyDark: '#534AB7', blue: '#7F77DD', blueLight: '#AFA9EC',
   tagBg: '#120D2E', tagText: '#AFA9EC', inputBg: '#1E1545',
-  navBg: '#120D2E', navBorder: '#2A1F5A', modalBg: '#1E1545',
+  navBg: '#120D2E', navBorder: '#2A1F5A',
+  modalBg: '#1E1545',
   activeGreen: '#4ADE80', activeGreenBg: '#0D2E1A',
   activeRed: '#F09595', activeRedBg: '#2E0D0D',
   activeYellow: '#FCD34D', activeYellowBg: '#2E200D',
@@ -50,6 +53,7 @@ const CONDITIONS = [
 
 const CONDITION_LABELS = { new: 'جديد', like_new: 'شبه جديد', used: 'مستعمل' };
 
+// ===== أنواع قطع الغيار =====
 const PART_TYPES = [
   'إطارات', 'رينقات (جنوط)', 'مساعدات', 'بطارية', 'ردياتير',
   'دينمو', 'مكينة (محرك)', 'قير (ناقل حركة)', 'مكيف / كمبروسر',
@@ -64,6 +68,7 @@ const CITIES = {
   en: ['All','Dubai','Abu Dhabi','Sharjah','Ajman','Ras Al Khaimah','Fujairah','Umm Al Quwain','Al Ain'],
 };
 
+// ===== الشركات والموديلات (محفوظة من النسخة القديمة) =====
 const BRANDS_DATA = [
   { label: 'تويوتا / Toyota', value: 'toyota', models: ['Land Cruiser','Prado','Camry','Corolla','Hilux','Yaris','RAV4','Fortuner','Highlander','Avalon','C-HR','Rush','Sequoia','Tundra','4Runner','Venza','Crown'] },
   { label: 'نيسان / Nissan', value: 'nissan', models: ['Patrol','Altima','Sunny','X-Trail','Murano','Armada','Navara','Juke','Kicks','Maxima','Pathfinder','GT-R','Z','370Z','Sentra','Leaf'] },
@@ -99,6 +104,7 @@ const BRANDS_DATA = [
   { label: 'جينيسيس / Genesis', value: 'genesis', models: ['G70','G80','G90','GV70','GV80'] },
 ];
 
+// ===== اللوقو =====
 const LogoWhite = ({ width = 140, height = 34 }) => (
   <Svg width={width} height={height} viewBox="0 0 420 100">
     <Line x1="10" y1="22" x2="62" y2="22" stroke="#378ADD" strokeWidth="5" strokeLinecap="round"/>
@@ -115,7 +121,10 @@ const LogoWhite = ({ width = 140, height = 34 }) => (
 );
 
 const Toggle = ({ value, onToggle }) => (
-  <TouchableOpacity onPress={onToggle} style={{ width: 50, height: 28, borderRadius: 14, backgroundColor: value ? '#534AB7' : '#D1D1D6', justifyContent: 'center', padding: 2 }}>
+  <TouchableOpacity
+    onPress={onToggle}
+    style={{ width: 50, height: 28, borderRadius: 14, backgroundColor: value ? '#534AB7' : '#D1D1D6', justifyContent: 'center', padding: 2 }}
+  >
     <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#fff', transform: [{ translateX: value ? 22 : 0 }] }} />
   </TouchableOpacity>
 );
@@ -123,12 +132,18 @@ const Toggle = ({ value, onToggle }) => (
 const PulsingIcon = ({ name, size = 56, color }) => {
   const pulse = useRef(new Animated.Value(1)).current;
   useEffect(() => {
-    Animated.loop(Animated.sequence([
-      Animated.timing(pulse, { toValue: 1.15, duration: 1000, useNativeDriver: true }),
-      Animated.timing(pulse, { toValue: 1, duration: 1000, useNativeDriver: true }),
-    ])).start();
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.15, duration: 1000, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 1000, useNativeDriver: true }),
+      ])
+    ).start();
   }, []);
-  return (<Animated.View style={{ transform: [{ scale: pulse }] }}><Ionicons name={name} size={size} color={color} /></Animated.View>);
+  return (
+    <Animated.View style={{ transform: [{ scale: pulse }] }}>
+      <Ionicons name={name} size={size} color={color} />
+    </Animated.View>
+  );
 };
 
 export default function Index() {
@@ -139,22 +154,21 @@ export default function Index() {
   const CT = isDark ? DARK : LIGHT;
   const cities = CITIES[lang];
 
-  const isAdmin = isLoggedIn && user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
-
   const [activeTab, setActiveTab] = useState('home');
   const [showProfileModal, setShowProfileModal] = useState(false);
 
+  // ===== قائمة القطع =====
   const [parts, setParts] = useState([]);
-  const [pendingParts, setPendingParts] = useState([]);
-  const [loadingPending, setLoadingPending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [filterCity, setFilterCity] = useState('');
 
+  // ===== تفاصيل قطعة =====
   const [selectedPart, setSelectedPart] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
 
+  // ===== نموذج نشر قطعة =====
   const [showPost, setShowPost] = useState(false);
   const [partType, setPartType] = useState('');
   const [customPartType, setCustomPartType] = useState('');
@@ -170,15 +184,20 @@ export default function Index() {
   const [pickingImage, setPickingImage] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // dropdowns
   const [partTypeOpen, setPartTypeOpen] = useState(false);
   const [brandOpen, setBrandOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [brandQuery, setBrandQuery] = useState('');
   const [partQuery, setPartQuery] = useState('');
 
-  const filteredBrands = brandQuery ? BRANDS_DATA.filter(b => b.label.toLowerCase().includes(brandQuery.toLowerCase())) : BRANDS_DATA;
+  const filteredBrands = brandQuery
+    ? BRANDS_DATA.filter(b => b.label.toLowerCase().includes(brandQuery.toLowerCase()))
+    : BRANDS_DATA;
   const models = selectedBrand ? (BRANDS_DATA.find(b => b.value === selectedBrand.value)?.models || []) : [];
-  const filteredPartTypes = partQuery ? PART_TYPES.filter(p => p.includes(partQuery)) : PART_TYPES;
+  const filteredPartTypes = partQuery
+    ? PART_TYPES.filter(p => p.includes(partQuery))
+    : PART_TYPES;
 
   useEffect(() => { loadParts(); }, []);
 
@@ -186,52 +205,15 @@ export default function Index() {
     try {
       const snap = await getDocs(collection(db, 'parts'));
       let list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // عرض المعتمدة فقط (أو القديمة اللي ما لها حقل موافقة)
       list = list.filter(p => p.status === undefined || p.status === 'approved');
       list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       setParts(list);
-    } catch (e) { console.log('load parts error:', e); }
+    } catch (e) {
+      console.log('load parts error:', e);
+    }
     setLoading(false);
     setRefreshing(false);
-  };
-
-  const loadPending = async () => {
-    setLoadingPending(true);
-    try {
-      const snap = await getDocs(collection(db, 'parts'));
-      let list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      list = list.filter(p => p.status === 'pending');
-      list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-      setPendingParts(list);
-    } catch (e) {
-      console.log('load pending error:', e);
-    }
-    setLoadingPending(false);
-  };
-
-  const approvePart = async (id) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    try {
-      await updateDoc(doc(db, 'parts', id), { status: 'approved' });
-      setPendingParts(prev => prev.filter(p => p.id !== id));
-      loadParts();
-    } catch (e) {
-      Alert.alert('خطأ', 'لم تتم الموافقة، حاول مرة أخرى');
-    }
-  };
-
-  const rejectPart = async (id) => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    Alert.alert('رفض الإعلان؟', 'سيتم حذف الإعلان نهائياً.', [
-      { text: 'إلغاء', style: 'cancel' },
-      { text: 'حذف', style: 'destructive', onPress: async () => {
-        try {
-          await deleteDoc(doc(db, 'parts', id));
-          setPendingParts(prev => prev.filter(p => p.id !== id));
-        } catch (e) {
-          Alert.alert('خطأ', 'لم يتم الحذف');
-        }
-      }}
-    ]);
   };
 
   const resetPostForm = () => {
@@ -243,50 +225,79 @@ export default function Index() {
   };
 
   const pickImage = async () => {
-    if (images.length >= MAX_IMAGES) { Alert.alert('', `الحد الأقصى ${MAX_IMAGES} صور`); return; }
+    if (images.length >= MAX_IMAGES) {
+      Alert.alert('', `الحد الأقصى ${MAX_IMAGES} صور`);
+      return;
+    }
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) { Alert.alert('', 'نحتاج إذن الوصول للصور'); return; }
+    if (!perm.granted) {
+      Alert.alert('', 'نحتاج إذن الوصول للصور');
+      return;
+    }
     setPickingImage(true);
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.7, allowsMultipleSelection: true, selectionLimit: MAX_IMAGES - images.length,
+        quality: 0.7,
+        allowsMultipleSelection: true,
+        selectionLimit: MAX_IMAGES - images.length,
       });
       if (!result.canceled && result.assets) {
         const compressed = [];
         for (const asset of result.assets) {
-          const manip = await ImageManipulator.manipulateAsync(asset.uri, [{ resize: { width: 800 } }], { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG, base64: true });
+          const manip = await ImageManipulator.manipulateAsync(
+            asset.uri,
+            [{ resize: { width: 800 } }],
+            { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+          );
           if (manip.base64) compressed.push('data:image/jpeg;base64,' + manip.base64);
         }
         setImages(prev => [...prev, ...compressed].slice(0, MAX_IMAGES));
       }
-    } catch (e) { Alert.alert('', 'تعذّر اختيار الصورة'); }
+    } catch (e) {
+      Alert.alert('', 'تعذّر اختيار الصورة');
+    }
     setPickingImage(false);
   };
 
-  const removeImage = (idx) => { setImages(prev => prev.filter((_, i) => i !== idx)); };
+  const removeImage = (idx) => {
+    setImages(prev => prev.filter((_, i) => i !== idx));
+  };
 
   const submitPart = async () => {
     const finalPartType = partType === 'غير ذلك' ? customPartType.trim() : partType;
     if (!finalPartType || !selectedBrand || !price.trim() || !phone.trim()) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('', 'الرجاء تعبئة: نوع القطعة، الشركة، السعر، ورقم الجوال'); return;
+      Alert.alert('', 'الرجاء تعبئة: نوع القطعة، الشركة، السعر، ورقم الجوال');
+      return;
     }
     if (images.length === 0) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('', 'أضف صورة واحدة على الأقل للقطعة'); return;
+      Alert.alert('', 'أضف صورة واحدة على الأقل للقطعة');
+      return;
     }
     setSaving(true);
     try {
       await addDoc(collection(db, 'parts'), {
-        partName: finalPartType, brand: selectedBrand.value, brandLabel: selectedBrand.label,
-        model: selectedModel || null, carYear: carYear.trim() || null,
+        partName: finalPartType,
+        brand: selectedBrand.value,
+        brandLabel: selectedBrand.label,
+        model: selectedModel || null,
+        carYear: carYear.trim() || null,
         carBrand: `${selectedBrand.label.split('/')[0].trim()} ${selectedModel || ''} ${carYear || ''}`.trim(),
-        condition, price: parseInt(price) || 0, city: postCity, phone: phone.trim(),
-        notes: notes.trim(), images, status: 'pending', createdAt: new Date().toISOString(),
+        condition,
+        price: parseInt(price) || 0,
+        city: postCity,
+        phone: phone.trim(),
+        notes: notes.trim(),
+        images,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('تم ✅', 'تم إرسال قطعتك! ستظهر بعد موافقة الإدارة.', [{ text: 'تمام', onPress: () => { setShowPost(false); resetPostForm(); } }]);
+      Alert.alert('تم ✅', 'تم إرسال قطعتك! ستظهر بعد موافقة الإدارة.', [
+        { text: 'تمام', onPress: () => { setShowPost(false); resetPostForm(); } }
+      ]);
     } catch (e) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('خطأ', 'لم يتم الإرسال، حاول مرة أخرى');
@@ -296,6 +307,7 @@ export default function Index() {
 
   const callSeller = (p) => { if (p) Linking.openURL('tel:' + p); };
 
+  // ===== فلترة القائمة المعروضة =====
   const visibleParts = parts.filter(p => {
     if (filterCity && p.city !== filterCity) return false;
     if (search.trim()) {
@@ -314,13 +326,16 @@ export default function Index() {
     headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     headerIconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
     headerActions: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+
     searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
     searchInput: { flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.25)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: '#fff', fontSize: 13, textAlign: 'right' },
+
     cityBar: { paddingHorizontal: 12, paddingVertical: 10, backgroundColor: CT.card, borderBottomWidth: 0.5, borderBottomColor: CT.cardBorder },
     cityChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: CT.bg, borderWidth: 1, borderColor: CT.cardBorder, marginRight: 8 },
     cityChipOn: { backgroundColor: CT.navyDark, borderColor: CT.navyDark },
     cityChipText: { fontSize: 12, color: CT.textSecondary, fontWeight: '500' },
     cityChipTextOn: { color: '#fff', fontWeight: '700' },
+
     card: { width: CARD_W, backgroundColor: CT.card, borderRadius: 14, overflow: 'hidden', borderWidth: 0.5, borderColor: CT.cardBorder, marginBottom: 10, padding: 12 },
     cardImg: { width: '100%', height: CARD_W * 0.7, borderRadius: 10, marginBottom: 8 },
     cardImgPlaceholder: { width: '100%', height: CARD_W * 0.7, borderRadius: 10, marginBottom: 8, backgroundColor: CT.tagBg, justifyContent: 'center', alignItems: 'center' },
@@ -330,23 +345,30 @@ export default function Index() {
     cardTags: { flexDirection: 'row', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', marginTop: 8 },
     miniTag: { backgroundColor: CT.tagBg, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 },
     miniTagText: { fontSize: 9, color: CT.textSecondary, fontWeight: '500' },
+
     fab: { position: 'absolute', bottom: NAV_HEIGHT + 16, left: 16, backgroundColor: CT.navyDark, borderRadius: 30, paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 8, elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
     fabText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
+
     emptyState: { alignItems: 'center', paddingHorizontal: 40, paddingTop: 80 },
     emptyTitle: { fontSize: 17, fontWeight: '700', color: CT.textPrimary, marginTop: 16, marginBottom: 8, textAlign: 'center' },
     emptySub: { fontSize: 13, color: CT.textMuted, textAlign: 'center', lineHeight: 20 },
+
     bottomNav: { backgroundColor: CT.navBg, flexDirection: 'row', paddingTop: 10, borderTopWidth: 0.5, borderTopColor: CT.navBorder },
     navItem: { flex: 1, alignItems: 'center' },
     navLabel: { fontSize: 10, color: CT.textMuted, marginTop: 2 },
     navLabelOn: { color: CT.blue, fontWeight: '700' },
+
+    // modal
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
     modalBox: { backgroundColor: CT.modalBg, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, maxHeight: '94%' },
     modalHandle: { width: 44, height: 5, backgroundColor: CT.cardBorder, borderRadius: 3, alignSelf: 'center', marginBottom: 18 },
     modalHdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
     modalTitle: { color: CT.textPrimary, fontSize: 17, fontWeight: 'bold' },
     resetText: { color: CT.blue, fontSize: 14 },
+
     label: { color: CT.textSecondary, fontSize: 13, fontWeight: '600', textAlign: 'right', marginBottom: 8, marginTop: 6 },
     input: { backgroundColor: CT.bg, color: CT.textPrimary, padding: 13, borderRadius: 12, fontSize: 14, borderWidth: 1, borderColor: CT.cardBorder, textAlign: 'right', marginBottom: 4 },
+
     dropTrigger: { backgroundColor: CT.bg, borderRadius: 12, padding: 13, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: CT.cardBorder },
     dropTriggerOpen: { borderColor: CT.navyDark, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
     dropTriggerDisabled: { opacity: 0.45 },
@@ -357,19 +379,24 @@ export default function Index() {
     dropItem: { padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: 0.5, borderBottomColor: CT.cardBorder },
     dropItemActive: { backgroundColor: CT.tagBg },
     dropItemText: { fontSize: 13, color: CT.textPrimary, flex: 1, textAlign: 'right' },
+
     pillsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
     pill: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 22, backgroundColor: CT.bg, borderWidth: 1, borderColor: CT.cardBorder },
     pillOn: { backgroundColor: CT.navyDark, borderColor: CT.navyDark },
     pillText: { fontSize: 12, color: CT.textSecondary, fontWeight: '500' },
     pillTextOn: { color: '#fff', fontWeight: 'bold' },
+
     submitBtn: { backgroundColor: CT.navyDark, borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 20, marginBottom: 30 },
     submitText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+
     imagesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
     imgThumb: { width: 72, height: 72, borderRadius: 10, overflow: 'hidden', position: 'relative' },
     imgThumbImg: { width: '100%', height: '100%' },
     imgRemove: { position: 'absolute', top: 2, right: 2, width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
     imgAdd: { width: 72, height: 72, borderRadius: 10, borderWidth: 1.5, borderColor: CT.cardBorder, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', backgroundColor: CT.bg },
     imgAddText: { fontSize: 10, color: CT.navy, marginTop: 2 },
+
+    // details
     detailName: { color: CT.textPrimary, fontSize: 20, fontWeight: 'bold', textAlign: 'right', marginBottom: 6 },
     detailImg: { width: SCREEN_WIDTH - 40, height: 240, borderRadius: 14, marginRight: 8 },
     detailPrice: { color: CT.navy, fontSize: 26, fontWeight: 'bold', textAlign: 'right', marginBottom: 16 },
@@ -379,6 +406,7 @@ export default function Index() {
     detailNotes: { fontSize: 13, color: CT.textSecondary, textAlign: 'right', lineHeight: 20, marginBottom: 20 },
     callBtn: { backgroundColor: CT.navyDark, borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 30 },
     callText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
+
     settingsSecLabel: { fontSize: 11, color: CT.textMuted, fontWeight: '600', paddingHorizontal: 16, marginBottom: 6, marginTop: 10 },
     settingsCard: { backgroundColor: CT.card, borderRadius: 14, marginHorizontal: 16, marginBottom: 8, borderWidth: 0.5, borderColor: CT.cardBorder, overflow: 'hidden' },
     settingsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14 },
@@ -386,27 +414,20 @@ export default function Index() {
     settingsRowText: { fontSize: 14, color: CT.textPrimary, flex: 1 },
     settingsRowSub: { fontSize: 11, color: CT.textMuted, marginTop: 2 },
     versionText: { textAlign: 'center', color: CT.textMuted, fontSize: 12, marginTop: 10 },
-    adminHdr: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 4 },
-    adminTitle: { fontSize: 18, fontWeight: '700', color: CT.textPrimary, textAlign: 'right' },
-    adminSub: { fontSize: 12, color: CT.textMuted, textAlign: 'right', marginTop: 4 },
-    adminCard: { backgroundColor: CT.card, borderRadius: 14, marginHorizontal: 16, marginBottom: 12, padding: 14, borderWidth: 0.5, borderColor: CT.cardBorder },
-    adminCardImg: { width: '100%', height: 160, borderRadius: 10, marginBottom: 10 },
-    adminCardName: { fontSize: 16, fontWeight: '700', color: CT.textPrimary, textAlign: 'right', marginBottom: 4 },
-    adminCardInfo: { fontSize: 12, color: CT.textSecondary, textAlign: 'right', marginBottom: 2 },
-    adminCardPrice: { fontSize: 16, fontWeight: 'bold', color: CT.navy, textAlign: 'right', marginBottom: 10 },
-    adminBtns: { flexDirection: 'row', gap: 8 },
-    approveBtn: { flex: 1, backgroundColor: CT.activeGreen, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-    approveText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
-    rejectBtn: { flex: 1, backgroundColor: CT.activeRedBg, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: CT.activeRed },
-    rejectText: { color: CT.activeRed, fontWeight: 'bold', fontSize: 14 },
+    favHdr: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 4 },
+    favTitle: { fontSize: 18, fontWeight: '700', color: CT.textPrimary, textAlign: 'right' },
+    favSub: { fontSize: 12, color: CT.textMuted, textAlign: 'right', marginTop: 4 },
   });
 
+  // ===== بطاقة قطعة =====
   const renderCard = ({ item }) => (
     <TouchableOpacity style={S.card} activeOpacity={0.7} onPress={() => { setSelectedPart(item); setShowDetails(true); }}>
       {item.images && item.images.length > 0 ? (
         <Image source={{ uri: item.images[0] }} style={S.cardImg} resizeMode="cover" />
       ) : (
-        <View style={S.cardImgPlaceholder}><Ionicons name="cube-outline" size={32} color={CT.navy} /></View>
+        <View style={S.cardImgPlaceholder}>
+          <Ionicons name="cube-outline" size={32} color={CT.navy} />
+        </View>
       )}
       <Text style={S.cardName} numberOfLines={1}>{item.partName}</Text>
       <Text style={S.cardBrand} numberOfLines={1}>🚗 {item.carBrand || item.brandLabel || ''}</Text>
@@ -418,6 +439,7 @@ export default function Index() {
     </TouchableOpacity>
   );
 
+  // ===== الشاشة الرئيسية =====
   const renderHome = () => (
     <View style={{ flex: 1 }}>
       <View style={S.cityBar}>
@@ -425,13 +447,15 @@ export default function Index() {
           {cities.map(c => {
             const on = filterCity === c || (c === cities[0] && !filterCity);
             return (
-              <TouchableOpacity key={c} style={[S.cityChip, on && S.cityChipOn]} onPress={() => setFilterCity(c === cities[0] ? '' : c)}>
+              <TouchableOpacity key={c} style={[S.cityChip, on && S.cityChipOn]}
+                onPress={() => setFilterCity(c === cities[0] ? '' : c)}>
                 <Text style={[S.cityChipText, on && S.cityChipTextOn]}>{c}</Text>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
       </View>
+
       {loading ? (
         <ActivityIndicator size="large" color={CT.navy} style={{ marginTop: 60 }} />
       ) : visibleParts.length === 0 ? (
@@ -442,13 +466,16 @@ export default function Index() {
         </View>
       ) : (
         <FlatList
-          data={visibleParts} keyExtractor={item => item.id} numColumns={2}
+          data={visibleParts}
+          keyExtractor={item => item.id}
+          numColumns={2}
           columnWrapperStyle={{ justifyContent: 'space-between', paddingHorizontal: 16 }}
           contentContainerStyle={{ paddingBottom: NAV_HEIGHT + 90, paddingTop: 12 }}
           renderItem={renderCard}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadParts(); }} colors={[CT.navy]} tintColor={CT.navy} />}
         />
       )}
+
       <TouchableOpacity style={S.fab} onPress={() => { resetPostForm(); setShowPost(true); }}>
         <Ionicons name="add" size={22} color="#fff" />
         <Text style={S.fabText}>أضف قطعة</Text>
@@ -456,53 +483,7 @@ export default function Index() {
     </View>
   );
 
-  const renderAdmin = () => (
-    <View style={{ flex: 1 }}>
-      <View style={S.adminHdr}>
-        <Text style={S.adminTitle}>موافقة الإعلانات 🛡️</Text>
-        <Text style={S.adminSub}>{pendingParts.length > 0 ? `${pendingParts.length} إعلان بانتظار الموافقة` : 'لا توجد إعلانات منتظرة'}</Text>
-      </View>
-      {loadingPending ? (
-        <ActivityIndicator size="large" color={CT.navy} style={{ marginTop: 40 }} />
-      ) : pendingParts.length === 0 ? (
-        <View style={S.emptyState}>
-          <PulsingIcon name="checkmark-done-circle-outline" size={56} color={CT.activeGreen} />
-          <Text style={S.emptyTitle}>كل شيء تمام ✅</Text>
-          <Text style={S.emptySub}>لا توجد إعلانات تنتظر الموافقة حالياً.</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={pendingParts}
-          keyExtractor={item => item.id}
-          contentContainerStyle={{ paddingBottom: NAV_HEIGHT + 20, paddingTop: 8 }}
-          refreshControl={<RefreshControl refreshing={loadingPending} onRefresh={loadPending} colors={[CT.navy]} tintColor={CT.navy} />}
-          renderItem={({ item }) => (
-            <View style={S.adminCard}>
-              {item.images && item.images.length > 0 && (
-                <Image source={{ uri: item.images[0] }} style={S.adminCardImg} resizeMode="cover" />
-              )}
-              <Text style={S.adminCardName}>{item.partName}</Text>
-              <Text style={S.adminCardInfo}>🚗 {item.carBrand || item.brandLabel || ''}</Text>
-              <Text style={S.adminCardInfo}>📍 {item.city} · 📞 {item.phone}</Text>
-              {item.notes ? <Text style={S.adminCardInfo}>📝 {item.notes}</Text> : null}
-              <Text style={S.adminCardPrice}>{item.price > 0 ? `${item.price.toLocaleString()} د.إ` : '—'}</Text>
-              <View style={S.adminBtns}>
-                <TouchableOpacity style={S.approveBtn} onPress={() => approvePart(item.id)}>
-                  <Ionicons name="checkmark" size={18} color="#fff" />
-                  <Text style={S.approveText}>موافقة</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={S.rejectBtn} onPress={() => rejectPart(item.id)}>
-                  <Ionicons name="trash-outline" size={16} color={CT.activeRed} />
-                  <Text style={S.rejectText}>رفض</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        />
-      )}
-    </View>
-  );
-
+  // ===== الإعدادات =====
   const renderSettings = () => (
     <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
       <Text style={S.settingsSecLabel}>{lang === 'ar' ? 'المظهر' : 'Appearance'}</Text>
@@ -516,6 +497,7 @@ export default function Index() {
           <Ionicons name={isDark ? 'moon' : 'sunny'} size={20} color={isDark ? '#7F77DD' : '#F59E0B'} />
         </View>
       </View>
+
       <Text style={S.settingsSecLabel}>{lang === 'ar' ? 'اللغة' : 'Language'}</Text>
       <View style={S.settingsCard}>
         <TouchableOpacity style={S.settingsRow} onPress={() => { setLang(lang === 'ar' ? 'en' : 'ar'); setFilterCity(''); }}>
@@ -523,6 +505,7 @@ export default function Index() {
           <Text style={{ color: CT.blue, fontWeight: '600' }}>{lang === 'ar' ? 'En' : 'ع'}</Text>
         </TouchableOpacity>
       </View>
+
       <Text style={S.settingsSecLabel}>{lang === 'ar' ? 'الحساب' : 'Account'}</Text>
       <View style={S.settingsCard}>
         <TouchableOpacity style={S.settingsRow} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/profile'); }}>
@@ -543,6 +526,8 @@ export default function Index() {
   return (
     <View style={S.container}>
       <StatusBar backgroundColor={CT.hdrBg} barStyle="light-content" translucent={false} />
+
+      {/* HEADER */}
       <View style={S.header}>
         <View style={S.headerRow}>
           <View style={S.headerActions}>
@@ -555,26 +540,32 @@ export default function Index() {
         {activeTab === 'home' && (
           <View style={S.searchRow}>
             <Ionicons name="search" size={18} color="rgba(255,255,255,0.6)" />
-            <TextInput style={S.searchInput} placeholder="ابحث عن قطعة... مثال: مساعد باترول" placeholderTextColor="rgba(255,255,255,0.4)" value={search} onChangeText={setSearch} />
+            <TextInput
+              style={S.searchInput}
+              placeholder="ابحث عن قطعة... مثال: مساعد باترول"
+              placeholderTextColor="rgba(255,255,255,0.4)"
+              value={search}
+              onChangeText={setSearch}
+            />
           </View>
         )}
       </View>
 
+      {/* BODY */}
       <View style={{ flex: 1 }}>
         {activeTab === 'home' && renderHome()}
         {activeTab === 'settings' && renderSettings()}
-        {activeTab === 'admin' && renderAdmin()}
       </View>
 
+      {/* BOTTOM NAV */}
       <View style={[S.bottomNav, { paddingBottom: insets.bottom + 8 }]}>
         {[
           { id: 'home', iconOff: 'home-outline', iconOn: 'home', label: 'القطع' },
-          ...(isAdmin ? [{ id: 'admin', iconOff: 'shield-outline', iconOn: 'shield', label: 'الإدارة' }] : []),
           { id: 'settings', iconOff: 'settings-outline', iconOn: 'settings', label: 'إعدادات' },
         ].map(tab => {
           const isOn = activeTab === tab.id;
           return (
-            <TouchableOpacity key={tab.id} style={S.navItem} onPress={() => { setActiveTab(tab.id); if (tab.id === 'admin') loadPending(); }}>
+            <TouchableOpacity key={tab.id} style={S.navItem} onPress={() => setActiveTab(tab.id)}>
               <Ionicons name={isOn ? tab.iconOn : tab.iconOff} size={24} color={isOn ? CT.blue : CT.textMuted} />
               <Text style={[S.navLabel, isOn && S.navLabelOn]}>{tab.label}</Text>
             </TouchableOpacity>
@@ -582,6 +573,7 @@ export default function Index() {
         })}
       </View>
 
+      {/* ===== Modal تفاصيل القطعة ===== */}
       <Modal visible={showDetails} animationType="slide" transparent statusBarTranslucent onRequestClose={() => setShowDetails(false)}>
         <View style={S.modalOverlay}>
           <View style={S.modalBox}>
@@ -589,13 +581,17 @@ export default function Index() {
             <View style={S.modalHdr}>
               <View style={{ width: 24 }} />
               <Text style={S.modalTitle}>تفاصيل القطعة</Text>
-              <TouchableOpacity onPress={() => setShowDetails(false)}><Ionicons name="close" size={24} color={CT.textSecondary} /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowDetails(false)}>
+                <Ionicons name="close" size={24} color={CT.textSecondary} />
+              </TouchableOpacity>
             </View>
             {selectedPart && (
               <ScrollView showsVerticalScrollIndicator={false}>
                 {selectedPart.images && selectedPart.images.length > 0 && (
                   <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-                    {selectedPart.images.map((img, i) => (<Image key={i} source={{ uri: img }} style={S.detailImg} resizeMode="cover" />))}
+                    {selectedPart.images.map((img, i) => (
+                      <Image key={i} source={{ uri: img }} style={S.detailImg} resizeMode="cover" />
+                    ))}
                   </ScrollView>
                 )}
                 <Text style={S.detailName}>{selectedPart.partName}</Text>
@@ -616,18 +612,26 @@ export default function Index() {
         </View>
       </Modal>
 
+      {/* ===== Modal نشر قطعة ===== */}
       <Modal visible={showPost} animationType="slide" transparent statusBarTranslucent onRequestClose={() => setShowPost(false)}>
         <View style={S.modalOverlay}>
           <View style={S.modalBox}>
             <View style={S.modalHandle} />
             <View style={S.modalHdr}>
-              <TouchableOpacity onPress={resetPostForm}><Text style={S.resetText}>مسح</Text></TouchableOpacity>
+              <TouchableOpacity onPress={resetPostForm}>
+                <Text style={S.resetText}>مسح</Text>
+              </TouchableOpacity>
               <Text style={S.modalTitle}>نشر قطعة غيار</Text>
-              <TouchableOpacity onPress={() => setShowPost(false)}><Ionicons name="close" size={22} color={CT.textSecondary} /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowPost(false)}>
+                <Ionicons name="close" size={22} color={CT.textSecondary} />
+              </TouchableOpacity>
             </View>
+
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* نوع القطعة */}
               <Text style={S.label}>نوع القطعة *</Text>
-              <TouchableOpacity style={[S.dropTrigger, partTypeOpen && S.dropTriggerOpen]} onPress={() => { setPartTypeOpen(!partTypeOpen); setBrandOpen(false); setModelOpen(false); setPartQuery(''); }}>
+              <TouchableOpacity style={[S.dropTrigger, partTypeOpen && S.dropTriggerOpen]}
+                onPress={() => { setPartTypeOpen(!partTypeOpen); setBrandOpen(false); setModelOpen(false); setPartQuery(''); }}>
                 <Ionicons name={partTypeOpen ? 'chevron-up' : 'chevron-down'} size={18} color={CT.textSecondary} />
                 <Text style={[S.dropText, !partType && S.dropPlaceholder]}>{partType || 'اختر نوع القطعة'}</Text>
                 <Ionicons name="construct-outline" size={18} color={CT.textSecondary} style={{ marginLeft: 8 }} />
@@ -637,12 +641,14 @@ export default function Index() {
                   <TextInput style={S.dropSearch} placeholder="ابحث..." placeholderTextColor={CT.textMuted} value={partQuery} onChangeText={setPartQuery} />
                   <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
                     {filteredPartTypes.map(pt => (
-                      <TouchableOpacity key={pt} style={[S.dropItem, partType === pt && S.dropItemActive]} onPress={() => { setPartType(pt); setPartTypeOpen(false); setPartQuery(''); }}>
+                      <TouchableOpacity key={pt} style={[S.dropItem, partType === pt && S.dropItemActive]}
+                        onPress={() => { setPartType(pt); setPartTypeOpen(false); setPartQuery(''); }}>
                         {partType === pt && <Ionicons name="checkmark" size={16} color={CT.navy} />}
                         <Text style={S.dropItemText}>{pt}</Text>
                       </TouchableOpacity>
                     ))}
-                    <TouchableOpacity style={[S.dropItem, partType === 'غير ذلك' && S.dropItemActive]} onPress={() => { setPartType('غير ذلك'); setPartTypeOpen(false); setPartQuery(''); }}>
+                    <TouchableOpacity style={[S.dropItem, partType === 'غير ذلك' && S.dropItemActive]}
+                      onPress={() => { setPartType('غير ذلك'); setPartTypeOpen(false); setPartQuery(''); }}>
                       {partType === 'غير ذلك' && <Ionicons name="checkmark" size={16} color={CT.navy} />}
                       <Text style={[S.dropItemText, { fontWeight: '700', color: CT.navy }]}>✏️ غير ذلك (اكتب القطعة)</Text>
                     </TouchableOpacity>
@@ -653,8 +659,10 @@ export default function Index() {
                 <TextInput style={[S.input, { marginTop: 8 }]} placeholder="اكتب اسم القطعة..." placeholderTextColor={CT.textMuted} value={customPartType} onChangeText={setCustomPartType} />
               )}
 
+              {/* الشركة */}
               <Text style={S.label}>الشركة *</Text>
-              <TouchableOpacity style={[S.dropTrigger, brandOpen && S.dropTriggerOpen]} onPress={() => { setBrandOpen(!brandOpen); setPartTypeOpen(false); setModelOpen(false); setBrandQuery(''); }}>
+              <TouchableOpacity style={[S.dropTrigger, brandOpen && S.dropTriggerOpen]}
+                onPress={() => { setBrandOpen(!brandOpen); setPartTypeOpen(false); setModelOpen(false); setBrandQuery(''); }}>
                 <Ionicons name={brandOpen ? 'chevron-up' : 'chevron-down'} size={18} color={CT.textSecondary} />
                 <Text style={[S.dropText, !selectedBrand && S.dropPlaceholder]}>{selectedBrand ? selectedBrand.label : 'اختر الشركة'}</Text>
                 <Ionicons name="car-sport-outline" size={18} color={CT.textSecondary} style={{ marginLeft: 8 }} />
@@ -664,7 +672,8 @@ export default function Index() {
                   <TextInput style={S.dropSearch} placeholder="ابحث في الشركات..." placeholderTextColor={CT.textMuted} value={brandQuery} onChangeText={setBrandQuery} />
                   <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
                     {filteredBrands.map(b => (
-                      <TouchableOpacity key={b.value} style={[S.dropItem, selectedBrand?.value === b.value && S.dropItemActive]} onPress={() => { setSelectedBrand(b); setSelectedModel(null); setBrandOpen(false); setBrandQuery(''); }}>
+                      <TouchableOpacity key={b.value} style={[S.dropItem, selectedBrand?.value === b.value && S.dropItemActive]}
+                        onPress={() => { setSelectedBrand(b); setSelectedModel(null); setBrandOpen(false); setBrandQuery(''); }}>
                         {selectedBrand?.value === b.value && <Ionicons name="checkmark" size={16} color={CT.navy} />}
                         <Text style={S.dropItemText}>{b.label}</Text>
                       </TouchableOpacity>
@@ -673,8 +682,11 @@ export default function Index() {
                 </View>
               )}
 
+              {/* الموديل */}
               <Text style={S.label}>الموديل</Text>
-              <TouchableOpacity style={[S.dropTrigger, modelOpen && S.dropTriggerOpen, !selectedBrand && S.dropTriggerDisabled]} onPress={() => { if (!selectedBrand) return; setModelOpen(!modelOpen); setPartTypeOpen(false); setBrandOpen(false); }} disabled={!selectedBrand}>
+              <TouchableOpacity style={[S.dropTrigger, modelOpen && S.dropTriggerOpen, !selectedBrand && S.dropTriggerDisabled]}
+                onPress={() => { if (!selectedBrand) return; setModelOpen(!modelOpen); setPartTypeOpen(false); setBrandOpen(false); }}
+                disabled={!selectedBrand}>
                 <Ionicons name={modelOpen ? 'chevron-up' : 'chevron-down'} size={18} color={CT.textSecondary} />
                 <Text style={[S.dropText, !selectedModel && S.dropPlaceholder]}>{selectedModel || (selectedBrand ? 'اختر الموديل' : 'اختر الشركة أولاً')}</Text>
                 <Ionicons name="speedometer-outline" size={18} color={CT.textSecondary} style={{ marginLeft: 8 }} />
@@ -696,45 +708,69 @@ export default function Index() {
                 </View>
               )}
 
+              {/* سنة السيارة */}
               <Text style={S.label}>سنة السيارة (اختياري)</Text>
               <TextInput style={S.input} placeholder="مثال: 2015" placeholderTextColor={CT.textMuted} value={carYear} onChangeText={setCarYear} keyboardType="numeric" />
 
+              {/* الحالة */}
               <Text style={S.label}>الحالة</Text>
               <View style={S.pillsRow}>
                 {CONDITIONS.map(c => {
                   const on = condition === c.id;
-                  return (<TouchableOpacity key={c.id} style={[S.pill, on && S.pillOn]} onPress={() => setCondition(c.id)}><Text style={[S.pillText, on && S.pillTextOn]}>{c.label}</Text></TouchableOpacity>);
+                  return (
+                    <TouchableOpacity key={c.id} style={[S.pill, on && S.pillOn]} onPress={() => setCondition(c.id)}>
+                      <Text style={[S.pillText, on && S.pillTextOn]}>{c.label}</Text>
+                    </TouchableOpacity>
+                  );
                 })}
               </View>
 
+              {/* السعر */}
               <Text style={S.label}>السعر (درهم) *</Text>
               <TextInput style={S.input} placeholder="مثال: 300" placeholderTextColor={CT.textMuted} value={price} onChangeText={setPrice} keyboardType="numeric" />
 
+              {/* المدينة */}
               <Text style={S.label}>المدينة</Text>
               <View style={S.pillsRow}>
                 {cities.filter(c => c !== 'الكل' && c !== 'All').map(c => {
                   const on = postCity === c;
-                  return (<TouchableOpacity key={c} style={[S.pill, on && S.pillOn]} onPress={() => setPostCity(c)}><Text style={[S.pillText, on && S.pillTextOn]}>{c}</Text></TouchableOpacity>);
+                  return (
+                    <TouchableOpacity key={c} style={[S.pill, on && S.pillOn]} onPress={() => setPostCity(c)}>
+                      <Text style={[S.pillText, on && S.pillTextOn]}>{c}</Text>
+                    </TouchableOpacity>
+                  );
                 })}
               </View>
 
+              {/* الجوال */}
               <Text style={S.label}>رقم الجوال *</Text>
               <TextInput style={S.input} placeholder="05x xxx xxxx" placeholderTextColor={CT.textMuted} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
 
+              {/* ملاحظات */}
               <Text style={S.label}>ملاحظات (اختياري)</Text>
               <TextInput style={[S.input, { height: 90, textAlignVertical: 'top', paddingTop: 12 }]} placeholder="تفاصيل إضافية..." placeholderTextColor={CT.textMuted} value={notes} onChangeText={setNotes} multiline />
 
+              {/* الصور */}
               <Text style={S.label}>صور القطعة * (حتى {MAX_IMAGES})</Text>
               <View style={S.imagesRow}>
                 {images.map((img, idx) => (
                   <View key={idx} style={S.imgThumb}>
                     <Image source={{ uri: img }} style={S.imgThumbImg} />
-                    <TouchableOpacity style={S.imgRemove} onPress={() => removeImage(idx)}><Ionicons name="close" size={14} color="#fff" /></TouchableOpacity>
+                    <TouchableOpacity style={S.imgRemove} onPress={() => removeImage(idx)}>
+                      <Ionicons name="close" size={14} color="#fff" />
+                    </TouchableOpacity>
                   </View>
                 ))}
                 {images.length < MAX_IMAGES && (
                   <TouchableOpacity style={S.imgAdd} onPress={pickImage} disabled={pickingImage}>
-                    {pickingImage ? <ActivityIndicator color={CT.navy} /> : (<><Ionicons name="camera-outline" size={26} color={CT.navy} /><Text style={S.imgAddText}>إضافة</Text></>)}
+                    {pickingImage ? (
+                      <ActivityIndicator color={CT.navy} />
+                    ) : (
+                      <>
+                        <Ionicons name="camera-outline" size={26} color={CT.navy} />
+                        <Text style={S.imgAddText}>إضافة</Text>
+                      </>
+                    )}
                   </TouchableOpacity>
                 )}
               </View>
@@ -747,6 +783,7 @@ export default function Index() {
         </View>
       </Modal>
 
+      {/* ===== Profile Modal ===== */}
       <Modal visible={showProfileModal} transparent animationType="fade" onRequestClose={() => setShowProfileModal(false)}>
         <TouchableOpacity style={profileStyles.overlay} activeOpacity={1} onPress={() => setShowProfileModal(false)}>
           <TouchableOpacity activeOpacity={1} style={profileStyles.modal} onPress={(e) => e.stopPropagation()}>
