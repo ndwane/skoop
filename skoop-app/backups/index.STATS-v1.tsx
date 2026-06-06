@@ -289,10 +289,7 @@ export default function Index() {
         model: selectedModel || null, carYear: carYear.trim() || null,
         carBrand: `${selectedBrand.label.split('/')[0].trim()} ${selectedModel || ''} ${carYear || ''}`.trim(),
         condition, price: parseInt(price) || 0, city: postCity, phone: phone.trim(),
-        notes: notes.trim(), images, status: 'pending',
-        userId: user?.uid || null,
-        userName: user?.displayName || user?.email?.split('@')[0] || 'مستخدم',
-        createdAt: new Date().toISOString(),
+        notes: notes.trim(), images, status: 'pending', createdAt: new Date().toISOString(),
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('تم ✅', 'تم إرسال قطعتك! ستظهر بعد موافقة الإدارة.', [{ text: 'تمام', onPress: () => { setShowPost(false); resetPostForm(); } }]);
@@ -304,19 +301,6 @@ export default function Index() {
   };
 
   const callSeller = (p) => { if (p) Linking.openURL('tel:' + p); };
-
-  const [sellerParts, setSellerParts] = useState([]);
-  const [showSeller, setShowSeller] = useState(false);
-  const [sellerName, setSellerName] = useState('');
-
-  const openSellerPage = (part) => {
-    if (!part.userId) { Alert.alert('', 'لا تتوفر صفحة لهذا المعلن'); return; }
-    const theirParts = parts.filter(p => p.userId === part.userId);
-    setSellerParts(theirParts);
-    setSellerName(part.userName || 'المعلن');
-    setShowDetails(false);
-    setShowSeller(true);
-  };
 
   const visibleParts = parts.filter(p => {
     if (filterCity && p.city !== filterCity) return false;
@@ -349,7 +333,6 @@ export default function Index() {
     cardName: { color: CT.textPrimary, fontSize: 14, fontWeight: '700', textAlign: 'right', marginBottom: 4 },
     cardBrand: { color: CT.textSecondary, fontSize: 11, textAlign: 'right', marginBottom: 8 },
     cardPrice: { color: CT.navy, fontSize: 16, fontWeight: 'bold', textAlign: 'right' },
-    cardSeller: { color: CT.textMuted, fontSize: 10, textAlign: 'right', marginTop: 6, fontStyle: 'italic' },
     cardTags: { flexDirection: 'row', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', marginTop: 8 },
     miniTag: { backgroundColor: CT.tagBg, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 },
     miniTagText: { fontSize: 9, color: CT.textSecondary, fontWeight: '500' },
@@ -400,9 +383,6 @@ export default function Index() {
     detailTag: { backgroundColor: CT.tagBg, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
     detailTagText: { fontSize: 12, color: CT.tagText, fontWeight: '500' },
     detailNotes: { fontSize: 13, color: CT.textSecondary, textAlign: 'right', lineHeight: 20, marginBottom: 20 },
-    sellerBox: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: CT.tagBg, borderRadius: 12, padding: 14, marginBottom: 14 },
-    sellerName: { fontSize: 14, fontWeight: '700', color: CT.textPrimary, textAlign: 'right' },
-    sellerHint: { fontSize: 11, color: CT.textMuted, textAlign: 'right', marginTop: 2 },
     callBtn: { backgroundColor: CT.navyDark, borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 30 },
     callText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
     settingsSecLabel: { fontSize: 11, color: CT.textMuted, fontWeight: '600', paddingHorizontal: 16, marginBottom: 6, marginTop: 10 },
@@ -441,7 +421,6 @@ export default function Index() {
       <Text style={S.cardName} numberOfLines={1}>{item.partName}</Text>
       <Text style={S.cardBrand} numberOfLines={1}>🚗 {item.carBrand || item.brandLabel || ''}</Text>
       <Text style={S.cardPrice}>{item.price > 0 ? `${item.price.toLocaleString()} د.إ` : '—'}</Text>
-      {item.userName ? <Text style={S.cardSeller}>👤 {item.userName}</Text> : null}
       <View style={S.cardTags}>
         {item.city ? <View style={S.miniTag}><Text style={S.miniTagText}>📍 {item.city}</Text></View> : null}
         {item.condition ? <View style={S.miniTag}><Text style={S.miniTagText}>{CONDITION_LABELS[item.condition] || item.condition}</Text></View> : null}
@@ -627,32 +606,6 @@ export default function Index() {
         })}
       </View>
 
-      <Modal visible={showSeller} animationType="slide" transparent statusBarTranslucent onRequestClose={() => setShowSeller(false)}>
-        <View style={S.modalOverlay}>
-          <View style={S.modalBox}>
-            <View style={S.modalHandle} />
-            <View style={S.modalHdr}>
-              <View style={{ width: 24 }} />
-              <Text style={S.modalTitle}>👤 {sellerName}</Text>
-              <TouchableOpacity onPress={() => setShowSeller(false)}><Ionicons name="close" size={24} color={CT.textSecondary} /></TouchableOpacity>
-            </View>
-            <Text style={S.adminSub}>{sellerParts.length} إعلان منشور</Text>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30, paddingTop: 10 }}>
-              {sellerParts.map(item => (
-                <TouchableOpacity key={item.id} style={S.adminCard} onPress={() => { setSelectedPart(item); setShowSeller(false); setShowDetails(true); }}>
-                  {item.images && item.images.length > 0 && (
-                    <Image source={{ uri: item.images[0] }} style={S.adminCardImg} resizeMode="cover" />
-                  )}
-                  <Text style={S.adminCardName}>{item.partName}</Text>
-                  <Text style={S.adminCardInfo}>🚗 {item.carBrand || item.brandLabel || ''}</Text>
-                  <Text style={S.adminCardPrice}>{item.price > 0 ? `${item.price.toLocaleString()} د.إ` : '—'}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
       <Modal visible={showDetails} animationType="slide" transparent statusBarTranslucent onRequestClose={() => setShowDetails(false)}>
         <View style={S.modalOverlay}>
           <View style={S.modalBox}>
@@ -677,15 +630,6 @@ export default function Index() {
                   {selectedPart.condition ? <View style={S.detailTag}><Text style={S.detailTagText}>{CONDITION_LABELS[selectedPart.condition] || selectedPart.condition}</Text></View> : null}
                 </View>
                 {selectedPart.notes ? <Text style={S.detailNotes}>{selectedPart.notes}</Text> : null}
-                {selectedPart.userName ? (
-                  <TouchableOpacity style={S.sellerBox} onPress={() => openSellerPage(selectedPart)}>
-                    <Ionicons name="chevron-back" size={18} color={CT.navy} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={S.sellerName}>👤 {selectedPart.userName}</Text>
-                      <Text style={S.sellerHint}>عرض كل إعلانات المعلن</Text>
-                    </View>
-                  </TouchableOpacity>
-                ) : null}
                 <TouchableOpacity style={S.callBtn} onPress={() => callSeller(selectedPart.phone)}>
                   <Ionicons name="call" size={18} color="#fff" />
                   <Text style={S.callText}>اتصل بالبائع</Text>
