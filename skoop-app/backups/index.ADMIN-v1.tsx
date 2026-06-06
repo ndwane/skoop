@@ -147,11 +147,6 @@ export default function Index() {
   const [parts, setParts] = useState([]);
   const [pendingParts, setPendingParts] = useState([]);
   const [loadingPending, setLoadingPending] = useState(false);
-  const stats = {
-    approved: parts.length,
-    pending: pendingParts.length,
-    total: parts.length + pendingParts.length,
-  };
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
@@ -186,7 +181,6 @@ export default function Index() {
   const filteredPartTypes = partQuery ? PART_TYPES.filter(p => p.includes(partQuery)) : PART_TYPES;
 
   useEffect(() => { loadParts(); }, []);
-  useEffect(() => { if (isAdmin) loadPending(); }, [isAdmin]);
 
   const loadParts = async () => {
     try {
@@ -392,10 +386,6 @@ export default function Index() {
     settingsRowText: { fontSize: 14, color: CT.textPrimary, flex: 1 },
     settingsRowSub: { fontSize: 11, color: CT.textMuted, marginTop: 2 },
     versionText: { textAlign: 'center', color: CT.textMuted, fontSize: 12, marginTop: 10 },
-    statsRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, marginTop: 16, marginBottom: 6 },
-    statCard: { flex: 1, backgroundColor: CT.card, borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: CT.cardBorder, alignItems: 'center' },
-    statNum: { fontSize: 24, fontWeight: '900', color: CT.navy, marginBottom: 4 },
-    statLabel: { fontSize: 11, color: CT.textMuted, textAlign: 'center' },
     adminHdr: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 4 },
     adminTitle: { fontSize: 18, fontWeight: '700', color: CT.textPrimary, textAlign: 'right' },
     adminSub: { fontSize: 12, color: CT.textMuted, textAlign: 'right', marginTop: 4 },
@@ -468,20 +458,6 @@ export default function Index() {
 
   const renderAdmin = () => (
     <View style={{ flex: 1 }}>
-      <View style={S.statsRow}>
-        <View style={S.statCard}>
-          <Text style={S.statNum}>{stats.approved}</Text>
-          <Text style={S.statLabel}>معتمدة</Text>
-        </View>
-        <View style={S.statCard}>
-          <Text style={[S.statNum, { color: CT.activeYellow }]}>{stats.pending}</Text>
-          <Text style={S.statLabel}>منتظرة</Text>
-        </View>
-        <View style={S.statCard}>
-          <Text style={S.statNum}>{stats.total}</Text>
-          <Text style={S.statLabel}>الإجمالي</Text>
-        </View>
-      </View>
       <View style={S.adminHdr}>
         <Text style={S.adminTitle}>موافقة الإعلانات 🛡️</Text>
         <Text style={S.adminSub}>{pendingParts.length > 0 ? `${pendingParts.length} إعلان بانتظار الموافقة` : 'لا توجد إعلانات منتظرة'}</Text>
