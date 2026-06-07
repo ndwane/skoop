@@ -199,6 +199,10 @@ export default function Index() {
   const [epCompanyName, setEpCompanyName] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [panelFilter, setPanelFilter] = useState('all');
+  const [editingPartId, setEditingPartId] = useState(null);
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const [returnNote, setReturnNote] = useState('');
+  const [returnTargetId, setReturnTargetId] = useState(null);
 
   const [parts, setParts] = useState([]);
   const [pendingParts, setPendingParts] = useState([]);
@@ -251,7 +255,7 @@ export default function Index() {
     try {
       const snap = await getDocs(collection(db, 'parts'));
       let list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      list = list.filter(p => p.status === undefined || p.status === 'approved');
+      list = list.filter(p => p.status === undefined || p.status === 'approved' || ((p.status === 'returned' || p.status === 'pending') && p.userId === user?.uid));
       list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       setParts(list);
     } catch (e) { console.log('load parts error:', e); }
@@ -281,6 +285,16 @@ export default function Index() {
       loadParts();
     } catch (e) {
       Alert.alert('خطأ', 'لم تتم الموافقة، حاول مرة أخرى');
+    }
+  };
+
+  const returnPart = async (id, note) => {
+    try {
+      await updateDoc(doc(db, 'parts', id), { status: 'returned', adminNote: note || '' });
+      setPendingParts(prev => prev.filter(p => p.id !== id));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      Alert.alert('خطأ', 'تعذّر إرجاع الإعلan');
     }
   };
 
@@ -345,6 +359,20 @@ export default function Index() {
     }
     setSaving(true);
     try {
+      if (editingPartId) {
+        await updateDoc(doc(db, 'parts', editingPartId), {
+          partName: finalPartType, brand: selectedBrand.value, brandLabel: selectedBrand.label,
+          model: selectedModel || null, carYear: carYear.trim() || null,
+          carBrand: `${selectedBrand.label.split('/')[0].trim()} ${selectedModel || ''} ${carYear || ''}`.trim(),
+          condition, price: parseInt(price) || 0, city: postCity, phone: phone.trim(),
+          notes: notes.trim(), images, category: postCategory || 'cars',
+          status: 'pending', adminNote: '',
+        });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setSaving(false);
+        Alert.alert('تم ✅', 'تم إعادة إرسال إعلانك للمراجعة.', [{ text: 'تمام', onPress: () => { setShowPost(false); setEditingPartId(null); resetPostForm(); loadParts(); } }]);
+        return;
+      }
       await addDoc(collection(db, 'parts'), {
         partName: finalPartType, brand: selectedBrand.value, brandLabel: selectedBrand.label,
         model: selectedModel || null, carYear: carYear.trim() || null,
@@ -406,6 +434,22 @@ export default function Index() {
 
   const myParts = parts.filter(p => p.userId && p.userId === user?.uid);
 
+  const editMyPart = (part) => {
+    setEditingPartId(part.id);
+    setPostCategory(part.category || 'cars');
+    setPartType(part.partName || '');
+    setSelectedBrand(BRANDS_DATA.find(b => b.value === part.brand) || null);
+    setSelectedModel(part.model || null);
+    setCarYear(part.carYear || '');
+    setCondition(part.condition || 'used');
+    setPrice(String(part.price || ''));
+    setPostCity(part.city || 'دبي');
+    setPhone(part.phone || '');
+    setNotes(part.notes || '');
+    setImages(part.images || []);
+    setShowPost(true);
+  };
+
   const [sellerParts, setSellerParts] = useState([]);
   const [showSeller, setShowSeller] = useState(false);
   const [sellerName, setSellerName] = useState('');
@@ -432,6 +476,7 @@ export default function Index() {
   const visibleParts = parts.filter(p => {
     if (selectedCategory && (p.category || 'cars') !== selectedCategory) return false;
     if (p.sold) return false;
+    if (p.status === 'returned' || p.status === 'pending') return false;
     if (filterCity && p.city !== filterCity) return false;
     if (search.trim()) {
       const txt = `${p.partName || ''} ${p.carBrand || ''} ${p.brandLabel || ''} ${p.model || ''}`.toLowerCase();
@@ -573,6 +618,11 @@ export default function Index() {
     filterBtnOn: { backgroundColor: CT.navyDark, borderColor: CT.navyDark },
     filterText: { fontSize: 12, color: CT.textSecondary, fontWeight: '600' },
     filterTextOn: { color: '#fff', fontWeight: '700' },
+    returnedBanner: { backgroundColor: CT.activeYellowBg, borderRadius: 10, padding: 10, marginBottom: 10, borderWidth: 1, borderColor: CT.activeYellow },
+    returnedTitle: { fontSize: 12, fontWeight: '800', color: CT.activeYellow, textAlign: 'right', marginBottom: 4 },
+    returnedNote: { fontSize: 12, color: CT.textSecondary, textAlign: 'right', lineHeight: 18 },
+    editPartBtn: { backgroundColor: CT.navyDark, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 8 },
+    editPartText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
   });
 
   const renderCard = ({ item }) => (
@@ -706,10 +756,7 @@ export default function Index() {
             </View>
             <View style={S.profileAvatar}><Ionicons name="person" size={30} color="#fff" /></View>
           </View>
-          <View style={{ flexDirection: 'row', marginTop: 16, borderTopWidth: 0.5, borderTopColor: CT.cardBorder, paddingTop: 14 }}>
-            <View style={S.profileStat}><Text style={S.profileStatNum}>{myParts.length}</Text><Text style={S.profileStatLabel}>إعلاناتي</Text></View>
-            <View style={S.profileStat}><Text style={S.profileStatNum}>{soldCount}</Text><Text style={S.profileStatLabel}>المباعة</Text></View>
-          </View>
+          
         </View>
 
         <Text style={S.settingsSecLabel}>إعلاناتي</Text>
@@ -741,10 +788,27 @@ export default function Index() {
               <Text style={S.adminCardName}>{item.partName}</Text>
               <Text style={S.adminCardInfo}>🚗 {item.carBrand || item.brandLabel || ''}</Text>
               <Text style={S.adminCardPrice}>{item.price > 0 ? `${item.price.toLocaleString()} د.إ` : '—'}</Text>
-              <TouchableOpacity style={[S.callBtn, { marginBottom: 0, backgroundColor: item.sold ? CT.activeGreen : '#E11D2A' }]} onPress={() => toggleSold(item)}>
-                <Ionicons name={item.sold ? 'refresh' : 'checkmark-done'} size={18} color="#fff" />
-                <Text style={S.callText}>{item.sold ? 'إعادة توفير' : 'تمّ البيع'}</Text>
-              </TouchableOpacity>
+              {item.status === 'returned' ? (
+                <>
+                  <View style={S.returnedBanner}>
+                    <Text style={S.returnedTitle}>⚠️ مُرجع للتعديل</Text>
+                    <Text style={S.returnedNote}>{item.adminNote || 'يرجى مراجعة الإعلان وإعادة إرساله.'}</Text>
+                  </View>
+                  <TouchableOpacity style={S.editPartBtn} onPress={() => editMyPart(item)}>
+                    <Ionicons name="create-outline" size={18} color="#fff" />
+                    <Text style={S.editPartText}>تعديل وإعادة الإرسال</Text>
+                  </TouchableOpacity>
+                </>
+              ) : item.status === 'pending' ? (
+                <View style={[S.returnedBanner, { backgroundColor: CT.tagBg, borderColor: CT.cardBorder }]}>
+                  <Text style={[S.returnedTitle, { color: CT.textMuted }]}>⏳ بانتظار موافقة الإدارة</Text>
+                </View>
+              ) : (
+                <TouchableOpacity style={[S.callBtn, { marginBottom: 0, backgroundColor: item.sold ? CT.activeGreen : '#E11D2A' }]} onPress={() => toggleSold(item)}>
+                  <Ionicons name={item.sold ? 'refresh' : 'checkmark-done'} size={18} color="#fff" />
+                  <Text style={S.callText}>{item.sold ? 'إعادة توفير' : 'تمّ البيع'}</Text>
+                </TouchableOpacity>
+              )}
             </TouchableOpacity>
           ))
         )}
@@ -804,6 +868,10 @@ export default function Index() {
                 <TouchableOpacity style={S.rejectBtn} onPress={() => rejectPart(item.id)}>
                   <Ionicons name="trash-outline" size={16} color={CT.activeRed} />
                   <Text style={S.rejectText}>رفض</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[S.rejectBtn, { borderColor: CT.activeYellow }]} onPress={() => { setReturnTargetId(item.id); setReturnNote(''); setShowReturnModal(true); }}>
+                  <Ionicons name="arrow-undo-outline" size={16} color={CT.activeYellow} />
+                  <Text style={[S.rejectText, { color: CT.activeYellow }]}>إرجاع</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -975,8 +1043,8 @@ export default function Index() {
           <View style={S.modalBox}>
             <View style={S.modalHandle} />
             <View style={S.modalHdr}>
-              <TouchableOpacity onPress={resetPostForm}><Text style={S.resetText}>مسح</Text></TouchableOpacity>
-              <Text style={S.modalTitle}>نشر قطعة غيار</Text>
+              <TouchableOpacity onPress={() => { setEditingPartId(null); resetPostForm(); }}><Text style={S.resetText}>مسح</Text></TouchableOpacity>
+              <Text style={S.modalTitle}>{editingPartId ? 'تعديل الإعلان' : 'نشر قطعة غيار'}</Text>
               <TouchableOpacity onPress={() => setShowPost(false)}><Ionicons name="close" size={22} color={CT.textSecondary} /></TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -1109,6 +1177,22 @@ export default function Index() {
                 {saving ? <ActivityIndicator color="#fff" /> : <Text style={S.submitText}>إرسال القطعة 🚀</Text>}
               </TouchableOpacity>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showReturnModal} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setShowReturnModal(false)}>
+        <View style={[S.modalOverlay, { justifyContent: 'center', padding: 24 }]}>
+          <View style={[S.modalBox, { borderRadius: 20, maxHeight: 'auto' }]}>
+            <Text style={[S.modalTitle, { textAlign: 'right', marginBottom: 12 }]}>إرجاع الإعلان للتعديل</Text>
+            <Text style={[S.label, { marginTop: 0 }]}>سبب الإرجاع (يظهر للمستخدم)</Text>
+            <TextInput style={[S.input, { height: 90, textAlignVertical: 'top', paddingTop: 12 }]} placeholder="مثال: الصورة غير واضحة، أضف صورة أوضح" placeholderTextColor={CT.textMuted} value={returnNote} onChangeText={setReturnNote} multiline />
+            <TouchableOpacity style={[S.submitBtn, { marginBottom: 8 }]} onPress={() => { returnPart(returnTargetId, returnNote); setShowReturnModal(false); }}>
+              <Text style={S.submitText}>إرسال الإرجاع</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={{ alignItems: 'center', padding: 8 }} onPress={() => setShowReturnModal(false)}>
+              <Text style={{ color: CT.textMuted }}>إلغاء</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
