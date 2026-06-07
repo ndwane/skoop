@@ -210,6 +210,7 @@ export default function Index() {
   const stats = {
     approved: parts.length,
     pending: pendingParts.length,
+    returned: pendingParts.filter(p => p.returnHistory && p.returnHistory.length > 0).length,
     total: parts.length + pendingParts.length,
   };
   const [loading, setLoading] = useState(true);
@@ -290,11 +291,15 @@ export default function Index() {
 
   const returnPart = async (id, note) => {
     try {
-      await updateDoc(doc(db, 'parts', id), { status: 'returned', adminNote: note || '' });
+      const target = pendingParts.find(p => p.id === id);
+      const prevHistory = (target && target.returnHistory) ? target.returnHistory : [];
+      const entry = { note: note || '', by: user?.email || 'admin', at: new Date().toISOString() };
+      await updateDoc(doc(db, 'parts', id), { status: 'returned', adminNote: note || '', returnHistory: [...prevHistory, entry] });
       setPendingParts(prev => prev.filter(p => p.id !== id));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      loadParts();
     } catch (e) {
-      Alert.alert('خطأ', 'تعذّر إرجاع الإعلan');
+      Alert.alert('خطأ', 'تعذّر إرجاع الإعلان');
     }
   };
 
@@ -599,6 +604,10 @@ export default function Index() {
     approveText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
     rejectBtn: { flex: 1, backgroundColor: CT.activeRedBg, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: CT.activeRed },
     rejectText: { color: CT.activeRed, fontWeight: 'bold', fontSize: 14 },
+    histBox: { backgroundColor: CT.activeYellowBg, borderRadius: 10, padding: 10, marginVertical: 8, borderWidth: 1, borderColor: CT.activeYellow },
+    histTitle: { fontSize: 12, fontWeight: '800', color: CT.activeYellow, textAlign: 'right' },
+    histLine: { fontSize: 12, color: CT.textSecondary, textAlign: 'right' },
+    histMeta: { fontSize: 10, color: CT.textMuted, textAlign: 'right', marginTop: 2 },
     profileCard: { backgroundColor: CT.card, borderRadius: 16, margin: 16, padding: 16, borderWidth: 0.5, borderColor: CT.cardBorder },
     profileTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     profileAvatar: { width: 60, height: 60, borderRadius: 30, backgroundColor: CT.navyDark, justifyContent: 'center', alignItems: 'center' },
@@ -743,7 +752,8 @@ export default function Index() {
     }
     const soldCount = myParts.filter(p => p.sold).length;
     return (
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: NAV_HEIGHT + 20 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: NAV_HEIGHT + 20 }} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadParts(); loadMyProfile(); }} colors={[CT.navy]} tintColor={CT.navy} />}>
         <View style={S.profileCard}>
           <View style={S.profileTop}>
             <TouchableOpacity onPress={openEditProfile}><Ionicons name="create-outline" size={22} color={CT.blue} /></TouchableOpacity>
@@ -828,6 +838,10 @@ export default function Index() {
           <Text style={S.statLabel}>منتظرة</Text>
         </View>
         <View style={S.statCard}>
+          <Text style={[S.statNum, { color: CT.activeRed }]}>{stats.returned}</Text>
+          <Text style={S.statLabel}>سبق إرجاعها</Text>
+        </View>
+        <View style={S.statCard}>
           <Text style={S.statNum}>{stats.total}</Text>
           <Text style={S.statLabel}>الإجمالي</Text>
         </View>
@@ -856,6 +870,17 @@ export default function Index() {
                 <Image source={{ uri: item.images[0] }} style={S.adminCardImg} resizeMode="cover" />
               )}
               <Text style={S.adminCardName}>{item.partName}</Text>
+              {item.returnHistory && item.returnHistory.length > 0 && (
+                <View style={S.histBox}>
+                  <Text style={S.histTitle}>⚠️ سبق إرجاعه {item.returnHistory.length} مرة</Text>
+                  {item.returnHistory.map((h, i) => (
+                    <View key={i} style={{ marginTop: 4 }}>
+                      <Text style={S.histLine}>📝 {h.note || '—'}</Text>
+                      <Text style={S.histMeta}>👤 {h.by} · 🕐 {new Date(h.at).toLocaleString('ar')}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
               <Text style={S.adminCardInfo}>🚗 {item.carBrand || item.brandLabel || ''}</Text>
               <Text style={S.adminCardInfo}>📍 {item.city} · 📞 {item.phone}</Text>
               {item.notes ? <Text style={S.adminCardInfo}>📝 {item.notes}</Text> : null}
