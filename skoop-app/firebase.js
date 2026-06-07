@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, setDoc, getDoc } from 'firebase/firestore';
 import {
   initializeAuth,
   getReactNativePersistence,
@@ -32,6 +32,8 @@ export const auth = initializeAuth(app, {
 export const db = getFirestore(app);
 
 export {
+  setDoc,
+  getDoc,
   collection,
   addDoc,
   getDocs,
