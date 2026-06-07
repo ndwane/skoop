@@ -198,6 +198,7 @@ export default function Index() {
   const [epSellerType, setEpSellerType] = useState('individual');
   const [epCompanyName, setEpCompanyName] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+  const [panelFilter, setPanelFilter] = useState('all');
 
   const [parts, setParts] = useState([]);
   const [pendingParts, setPendingParts] = useState([]);
@@ -452,8 +453,8 @@ export default function Index() {
     searchInput: { flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.25)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: '#fff', fontSize: 13, textAlign: 'right' },
     cityBar: { paddingHorizontal: 12, paddingVertical: 10, backgroundColor: CT.card, borderBottomWidth: 0.5, borderBottomColor: CT.cardBorder },
     soldOverlay: { position: 'absolute', top: 0, left: 0, right: 0, height: CARD_W * 0.7, backgroundColor: 'rgba(20,15,40,0.45)', justifyContent: 'center', alignItems: 'center', zIndex: 5, borderRadius: 10 },
-    soldStamp: { borderWidth: 2.5, borderColor: '#E11D2A', backgroundColor: 'rgba(225,29,42,0.12)', paddingHorizontal: 14, paddingVertical: 5, borderRadius: 8, transform: [{ rotate: '-12deg' }] },
-    soldStampText: { color: '#E11D2A', fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+    soldStamp: { borderWidth: 3, borderColor: '#E11D2A', backgroundColor: 'rgba(225,29,42,0.15)', paddingHorizontal: 18, paddingVertical: 7, borderRadius: 8, transform: [{ rotate: '-8deg' }] },
+    soldStampText: { color: '#E11D2A', fontSize: 14, fontWeight: '900', textAlign: 'center' },
     catGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12 },
     catCard: { width: '47.5%', backgroundColor: CT.card, borderRadius: 16, borderWidth: 0.5, borderColor: CT.cardBorder, paddingVertical: 22, paddingHorizontal: 10, alignItems: 'center', position: 'relative' },
     catIconBox: { width: 58, height: 58, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
@@ -567,6 +568,11 @@ export default function Index() {
     segBtnOn: { backgroundColor: CT.navyDark },
     segText: { fontSize: 13, color: CT.textSecondary, fontWeight: '600' },
     segTextOn: { color: '#fff' },
+    filterRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 10 },
+    filterBtn: { flex: 1, paddingVertical: 9, borderRadius: 20, backgroundColor: CT.card, borderWidth: 1, borderColor: CT.cardBorder, alignItems: 'center' },
+    filterBtnOn: { backgroundColor: CT.navyDark, borderColor: CT.navyDark },
+    filterText: { fontSize: 12, color: CT.textSecondary, fontWeight: '600' },
+    filterTextOn: { color: '#fff', fontWeight: '700' },
   });
 
   const renderCard = ({ item }) => (
@@ -579,7 +585,7 @@ export default function Index() {
         )}
         {item.sold && (
           <View style={S.soldOverlay}>
-            <View style={S.soldStamp}><Text style={S.soldStampText}>{lang === 'ar' ? 'غير متوفر' : 'Sold'}</Text></View>
+            <View style={S.soldStamp}><Text style={S.soldStampText} numberOfLines={1}>{lang === 'ar' ? 'غير متوفر' : 'Sold'}</Text></View>
           </View>
         )}
       </View>
@@ -707,18 +713,29 @@ export default function Index() {
         </View>
 
         <Text style={S.settingsSecLabel}>إعلاناتي</Text>
+        <View style={S.filterRow}>
+          <TouchableOpacity style={[S.filterBtn, panelFilter === 'all' && S.filterBtnOn]} onPress={() => setPanelFilter('all')}>
+            <Text style={[S.filterText, panelFilter === 'all' && S.filterTextOn]}>الكل ({myParts.length})</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[S.filterBtn, panelFilter === 'available' && S.filterBtnOn]} onPress={() => setPanelFilter('available')}>
+            <Text style={[S.filterText, panelFilter === 'available' && S.filterTextOn]}>معروضة ({myParts.filter(p => !p.sold).length})</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[S.filterBtn, panelFilter === 'sold' && S.filterBtnOn]} onPress={() => setPanelFilter('sold')}>
+            <Text style={[S.filterText, panelFilter === 'sold' && S.filterTextOn]}>مباعة ({myParts.filter(p => p.sold).length})</Text>
+          </TouchableOpacity>
+        </View>
         {myParts.length === 0 ? (
           <View style={{ alignItems: 'center', paddingVertical: 30 }}>
             <Ionicons name="cube-outline" size={40} color={CT.textMuted} />
             <Text style={[S.emptySub, { marginTop: 10 }]}>لا توجد إعلانات بعد</Text>
           </View>
         ) : (
-          myParts.map(item => (
+          myParts.filter(p => panelFilter === 'all' ? true : panelFilter === 'sold' ? p.sold : !p.sold).map(item => (
             <TouchableOpacity key={item.id} style={S.adminCard} onPress={() => { setSelectedPart(item); setShowDetails(true); }}>
               {item.images && item.images.length > 0 && (
                 <View style={{ position: 'relative' }}>
                   <Image source={{ uri: item.images[0] }} style={S.adminCardImg} resizeMode="cover" />
-                  {item.sold && (<View style={[S.soldOverlay, { height: 160 }]}><View style={S.soldStamp}><Text style={S.soldStampText}>{lang === 'ar' ? 'غير متوفر' : 'Sold'}</Text></View></View>)}
+                  {item.sold && (<View style={[S.soldOverlay, { height: 160 }]}><View style={S.soldStamp}><Text style={S.soldStampText} numberOfLines={1}>{lang === 'ar' ? 'غير متوفر' : 'Sold'}</Text></View></View>)}
                 </View>
               )}
               <Text style={S.adminCardName}>{item.partName}</Text>
