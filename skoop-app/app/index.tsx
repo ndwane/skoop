@@ -446,6 +446,34 @@ export default function Index() {
     } catch (e) { return ''; }
   };
 
+  const sendChatImage = async (fromCamera) => {
+    try {
+      const perm = fromCamera
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) { Alert.alert('', 'نحتاج الإذن'); return; }
+      const result = fromCamera
+        ? await ImagePicker.launchCameraAsync({ quality: 0.7 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
+      if (result.canceled || !result.assets?.[0]) return;
+      const manip = await ImageManipulator.manipulateAsync(result.assets[0].uri, [{ resize: { width: 800 } }], { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG, base64: true });
+      if (!manip.base64 || !activeChat) return;
+      const img = 'data:image/jpeg;base64,' + manip.base64;
+      await addDoc(collection(db, 'chats', activeChat.id, 'messages'), {
+        image: img, senderId: user.uid, createdAt: new Date().toISOString(),
+      });
+      await updateDoc(doc(db, 'chats', activeChat.id), { lastMessage: '📷 صورة', updatedAt: new Date().toISOString() });
+    } catch (e) { Alert.alert('خطأ', 'تعذّر إرسال الصورة'); }
+  };
+
+  const pickChatImageMenu = () => {
+    Alert.alert('إرفاق صورة', '', [
+      { text: 'الكاميرا', onPress: () => sendChatImage(true) },
+      { text: 'الاستوديو', onPress: () => sendChatImage(false) },
+      { text: 'إلغاء', style: 'cancel' },
+    ]);
+  };
+
   const sendMessage = async () => {
     if (!chatInput.trim() || !activeChat) return;
     const text = chatInput.trim();
@@ -701,6 +729,7 @@ export default function Index() {
     chatInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderTopWidth: 0.5, borderTopColor: CT.cardBorder, backgroundColor: CT.card },
     chatInputField: { flex: 1, backgroundColor: CT.bg, borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10, color: CT.textPrimary, fontSize: 14, textAlign: 'right', borderWidth: 1, borderColor: CT.cardBorder },
     chatSend: { width: 44, height: 44, borderRadius: 22, backgroundColor: CT.navyDark, justifyContent: 'center', alignItems: 'center' },
+    chatAttach: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
     histBox: { backgroundColor: CT.activeYellowBg, borderRadius: 10, padding: 10, marginVertical: 8, borderWidth: 1, borderColor: CT.activeYellow },
     histTitle: { fontSize: 12, fontWeight: '800', color: CT.activeYellow, textAlign: 'right' },
     histLine: { fontSize: 12, color: CT.textSecondary, textAlign: 'right' },
@@ -1134,7 +1163,11 @@ export default function Index() {
               const mine = item.senderId === user?.uid;
               return (
                 <View style={[S.msgBubble, mine ? S.msgMine : S.msgTheirs]}>
-                  <Text style={mine ? S.msgTextMine : S.msgTextTheirs}>{item.text}</Text>
+                  {item.image ? (
+                    <Image source={{ uri: item.image }} style={{ width: 200, height: 200, borderRadius: 10 }} resizeMode="cover" />
+                  ) : (
+                    <Text style={mine ? S.msgTextMine : S.msgTextTheirs}>{item.text}</Text>
+                  )}
                   <Text style={{ fontSize: 9, color: mine ? 'rgba(255,255,255,0.6)' : CT.textMuted, textAlign: 'left', marginTop: 3 }}>{fmtTime(item.createdAt)}</Text>
                 </View>
               );
@@ -1144,6 +1177,9 @@ export default function Index() {
           <View style={[S.chatInputRow, { paddingBottom: insets.bottom + 10 }]}>
             <TouchableOpacity style={S.chatSend} onPress={sendMessage}>
               <Ionicons name="send" size={20} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity style={S.chatAttach} onPress={pickChatImageMenu}>
+              <Ionicons name="add" size={26} color={CT.textSecondary} />
             </TouchableOpacity>
             <TextInput style={S.chatInputField} placeholder="اكتب رسالة..." placeholderTextColor={CT.textMuted} value={chatInput} onChangeText={setChatInput} multiline />
           </View>
