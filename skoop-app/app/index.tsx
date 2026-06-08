@@ -185,7 +185,12 @@ export default function Index() {
   const CT = isDark ? DARK : LIGHT;
   const cities = CITIES[lang];
 
-  const isAdmin = isLoggedIn && user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
+  const [adminsList, setAdminsList] = useState([]);
+  const myEmail = user?.email?.toLowerCase() || '';
+  const isOwner = ADMIN_EMAILS.includes(myEmail);
+  const myAdminEntry = adminsList.find(a => a.id === myEmail);
+  const isAdmin = isLoggedIn && (isOwner || !!myAdminEntry);
+  const can = (perm) => isOwner || (myAdminEntry && myAdminEntry[perm] === true);
 
   const [activeTab, setActiveTab] = useState('home');
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -251,6 +256,13 @@ export default function Index() {
 
   useEffect(() => { loadParts(); }, []);
   useEffect(() => { if (isAdmin) loadPending(); }, [isAdmin]);
+  useEffect(() => {
+    if (!isLoggedIn) { setAdminsList([]); return; }
+    const unsub = onSnapshot(collection(db, 'admins'), (snap) => {
+      setAdminsList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, [isLoggedIn]);
   useEffect(() => { if (isLoggedIn) loadMyProfile(); }, [isLoggedIn]);
   const [myChats, setMyChats] = useState([]);
   const chatUnread = (c) => {
@@ -470,6 +482,26 @@ export default function Index() {
       await setDoc(doc(db, 'users', user.uid), { chatReads: { [chatId]: new Date().toISOString() } }, { merge: true });
       setMyProfile(prev => prev ? { ...prev, chatReads: { ...(prev.chatReads || {}), [chatId]: new Date().toISOString() } } : prev);
     } catch (e) {}
+  };
+
+  const [newAdminEmail, setNewAdminEmail] = useState('');
+  const addAdmin = async () => {
+    const email = newAdminEmail.trim().toLowerCase();
+    if (!email || !email.includes('@')) { Alert.alert('', 'أدخل إيميل صحيح'); return; }
+    if (email === myEmail || ADMIN_EMAILS.includes(email)) { Alert.alert('', 'هذا الإيميل مالك أصلاً'); return; }
+    try {
+      await setDoc(doc(db, 'admins', email), { canApprove: true, canDelete: false, canManageUsers: false, addedAt: new Date().toISOString() });
+      setNewAdminEmail('');
+    } catch (e) { Alert.alert('خطأ', 'تعذّر إضافة المدير'); }
+  };
+  const removeAdmin = async (email) => {
+    Alert.alert('حذف مدير', `حذف ${email}؟`, [
+      { text: 'إلغاء', style: 'cancel' },
+      { text: 'حذف', style: 'destructive', onPress: async () => { try { await deleteDoc(doc(db, 'admins', email)); } catch (e) {} } },
+    ]);
+  };
+  const toggleAdminPerm = async (email, perm, val) => {
+    try { await updateDoc(doc(db, 'admins', email), { [perm]: val }); } catch (e) {}
   };
 
   const sendChatImage = async (fromCamera) => {
@@ -764,6 +796,17 @@ export default function Index() {
     navBadge: { position: 'absolute', top: -6, right: -10, backgroundColor: '#E11D2A', borderRadius: 10, minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
     navBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
     chatRowDot: { position: 'absolute', top: -2, right: -2, width: 12, height: 12, borderRadius: 6, backgroundColor: '#E11D2A', borderWidth: 2, borderColor: CT.card },
+    adminMgr: { backgroundColor: CT.card, borderRadius: 14, padding: 14, marginHorizontal: 16, marginBottom: 16, borderWidth: 0.5, borderColor: CT.cardBorder },
+    adminAddRow: { flexDirection: 'row', gap: 8, marginTop: 10, alignItems: 'center' },
+    adminEmailInput: { flex: 1, backgroundColor: CT.bg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, color: CT.textPrimary, fontSize: 13, textAlign: 'right', borderWidth: 1, borderColor: CT.cardBorder },
+    adminAddBtn: { backgroundColor: CT.navyDark, borderRadius: 10, paddingHorizontal: 18, paddingVertical: 10, justifyContent: 'center' },
+    adminAddBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+    adminItem: { backgroundColor: CT.bg, borderRadius: 10, padding: 10, marginTop: 8 },
+    adminItemTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+    adminItemEmail: { flex: 1, fontSize: 13, fontWeight: '600', color: CT.textPrimary, textAlign: 'right' },
+    permRow: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 8 },
+    permChk: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    permLabel: { fontSize: 12, color: CT.textSecondary },
     histBox: { backgroundColor: CT.activeYellowBg, borderRadius: 10, padding: 10, marginVertical: 8, borderWidth: 1, borderColor: CT.activeYellow },
     histTitle: { fontSize: 12, fontWeight: '800', color: CT.activeYellow, textAlign: 'right' },
     histLine: { fontSize: 12, color: CT.textSecondary, textAlign: 'right' },
@@ -1026,6 +1069,40 @@ export default function Index() {
           <Text style={S.statLabel}>الإجمالي</Text>
         </View>
       </View>
+      {isOwner && (
+        <View style={S.adminMgr}>
+          <Text style={S.adminTitle}>المدراء 👥</Text>
+          <View style={S.adminAddRow}>
+            <TouchableOpacity style={S.adminAddBtn} onPress={addAdmin}><Text style={S.adminAddBtnText}>إضافة</Text></TouchableOpacity>
+            <TextInput style={S.adminEmailInput} placeholder="إيميل المدير" placeholderTextColor={CT.textMuted} value={newAdminEmail} onChangeText={setNewAdminEmail} autoCapitalize="none" keyboardType="email-address" />
+          </View>
+          {adminsList.length === 0 ? (
+            <Text style={[S.emptySub, { textAlign: 'center', paddingVertical: 10 }]}>لا يوجد مدراء مضافون</Text>
+          ) : adminsList.map(a => (
+            <View key={a.id} style={S.adminItem}>
+              <View style={S.adminItemTop}>
+                <TouchableOpacity onPress={() => removeAdmin(a.id)}><Ionicons name="trash-outline" size={20} color={CT.activeRed} /></TouchableOpacity>
+                <Text style={S.adminItemEmail} numberOfLines={1}>{a.id}</Text>
+              </View>
+              <View style={S.permRow}>
+                <TouchableOpacity style={S.permChk} onPress={() => toggleAdminPerm(a.id, 'canApprove', !a.canApprove)}>
+                  <Ionicons name={a.canApprove ? 'checkbox' : 'square-outline'} size={20} color={a.canApprove ? CT.blue : CT.textMuted} />
+                  <Text style={S.permLabel}>موافقة</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={S.permChk} onPress={() => toggleAdminPerm(a.id, 'canDelete', !a.canDelete)}>
+                  <Ionicons name={a.canDelete ? 'checkbox' : 'square-outline'} size={20} color={a.canDelete ? CT.blue : CT.textMuted} />
+                  <Text style={S.permLabel}>حذف</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={S.permChk} onPress={() => toggleAdminPerm(a.id, 'canManageUsers', !a.canManageUsers)}>
+                  <Ionicons name={a.canManageUsers ? 'checkbox' : 'square-outline'} size={20} color={a.canManageUsers ? CT.blue : CT.textMuted} />
+                  <Text style={S.permLabel}>مستخدمين</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
       <View style={S.adminHdr}>
         <Text style={S.adminTitle}>موافقة الإعلانات 🛡️</Text>
         <Text style={S.adminSub}>{pendingParts.length > 0 ? `${pendingParts.length} إعلان بانتظار الموافقة` : 'لا توجد إعلانات منتظرة'}</Text>
