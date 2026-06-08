@@ -2,7 +2,7 @@
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
   StyleSheet, ActivityIndicator, ScrollView, Modal,
-  Alert, Linking, Image, StatusBar, Dimensions, Animated, RefreshControl
+  Alert, Linking, Image, StatusBar, Dimensions, Animated, RefreshControl, KeyboardAvoidingView, Platform, Keyboard
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -252,16 +252,6 @@ export default function Index() {
   useEffect(() => { loadParts(); }, []);
   useEffect(() => { if (isAdmin) loadPending(); }, [isAdmin]);
   useEffect(() => { if (isLoggedIn) loadMyProfile(); }, [isLoggedIn]);
-  useEffect(() => {
-    if (!activeChat?.id) return;
-    const q = query(collection(db, 'chats', activeChat.id, 'messages'));
-    const unsub = onSnapshot(q, (snap) => {
-      const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      msgs.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
-      setChatMessages(msgs);
-    });
-    return () => unsub();
-  }, [activeChat?.id]);
 
   const loadParts = async () => {
     try {
@@ -412,6 +402,13 @@ export default function Index() {
 
   const [activeChat, setActiveChat] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
+  const chatListRef = useRef(null);
+  const [kbHeight, setKbHeight] = useState(0);
+  useEffect(() => {
+    const s = Keyboard.addListener('keyboardDidShow', (e) => setKbHeight(e.endCoordinates.height));
+    const h = Keyboard.addListener('keyboardDidHide', () => setKbHeight(0));
+    return () => { s.remove(); h.remove(); };
+  }, []);
   const [chatInput, setChatInput] = useState('');
   const [showChat, setShowChat] = useState(false);
 
@@ -437,6 +434,18 @@ export default function Index() {
     } catch (e) { Alert.alert('خطأ', 'تعذّر فتح المحادثة'); }
   };
 
+  const fmtTime = (iso) => {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      const now = new Date();
+      const sameDay = d.toDateString() === now.toDateString();
+      const time = d.toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' });
+      if (sameDay) return time;
+      return `${d.toLocaleDateString('ar')} · ${time}`;
+    } catch (e) { return ''; }
+  };
+
   const sendMessage = async () => {
     if (!chatInput.trim() || !activeChat) return;
     const text = chatInput.trim();
@@ -448,6 +457,17 @@ export default function Index() {
       await updateDoc(doc(db, 'chats', activeChat.id), { lastMessage: text, updatedAt: new Date().toISOString() });
     } catch (e) { Alert.alert('خطأ', 'لم تُرسل الرسالة'); }
   };
+
+  useEffect(() => {
+    if (!activeChat?.id) return;
+    const q = query(collection(db, 'chats', activeChat.id, 'messages'));
+    const unsub = onSnapshot(q, (snap) => {
+      const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      msgs.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+      setChatMessages(msgs);
+    });
+    return () => unsub();
+  }, [activeChat?.id]);
 
   const loadMyProfile = async () => {
     if (!user?.uid) return;
@@ -1093,7 +1113,7 @@ export default function Index() {
       </View>
 
       <Modal visible={showChat} animationType="slide" onRequestClose={() => setShowChat(false)}>
-        <View style={{ flex: 1, backgroundColor: CT.bg }}>
+        <View style={{ flex: 1, backgroundColor: CT.bg, marginBottom: kbHeight }}>
           <View style={S.chatHeader}>
             <TouchableOpacity onPress={() => { setShowChat(false); setActiveChat(null); setChatMessages([]); }}>
               <Ionicons name="arrow-forward" size={24} color="#fff" />
@@ -1104,14 +1124,18 @@ export default function Index() {
             </View>
           </View>
           <FlatList
+            ref={chatListRef}
             data={chatMessages}
             keyExtractor={item => item.id}
             contentContainerStyle={{ padding: 14, paddingBottom: 20 }}
+            onContentSizeChange={() => chatListRef.current?.scrollToEnd({ animated: true })}
+            onLayout={() => chatListRef.current?.scrollToEnd({ animated: false })}
             renderItem={({ item }) => {
               const mine = item.senderId === user?.uid;
               return (
                 <View style={[S.msgBubble, mine ? S.msgMine : S.msgTheirs]}>
                   <Text style={mine ? S.msgTextMine : S.msgTextTheirs}>{item.text}</Text>
+                  <Text style={{ fontSize: 9, color: mine ? 'rgba(255,255,255,0.6)' : CT.textMuted, textAlign: 'left', marginTop: 3 }}>{fmtTime(item.createdAt)}</Text>
                 </View>
               );
             }}
