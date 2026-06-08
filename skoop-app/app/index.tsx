@@ -209,16 +209,27 @@ export default function Index() {
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [returnNote, setReturnNote] = useState('');
   const [returnMode, setReturnMode] = useState('return');
+  const [adminTab, setAdminTab] = useState('pending');
+  const [allAdminParts, setAllAdminParts] = useState([]);
+  const adminFiltered = allAdminParts.filter(p => {
+    if (adminTab === 'all') return true;
+    if (adminTab === 'approved') return p.status === 'approved' || p.status === undefined;
+    if (adminTab === 'pending') return p.status === 'pending' && !(p.returnHistory && p.returnHistory.length > 0);
+    if (adminTab === 'returned') return p.status === 'pending' && p.returnHistory && p.returnHistory.length > 0;
+    if (adminTab === 'rejected') return p.status === 'rejected';
+    return true;
+  });
   const [returnTargetId, setReturnTargetId] = useState(null);
 
   const [parts, setParts] = useState([]);
   const [pendingParts, setPendingParts] = useState([]);
   const [loadingPending, setLoadingPending] = useState(false);
   const stats = {
-    approved: parts.length,
-    pending: pendingParts.length,
-    returned: pendingParts.filter(p => p.returnHistory && p.returnHistory.length > 0).length,
-    total: parts.length + pendingParts.length,
+    approved: allAdminParts.filter(p => p.status === 'approved' || p.status === undefined).length,
+    pending: allAdminParts.filter(p => p.status === 'pending' && !(p.returnHistory && p.returnHistory.length > 0)).length,
+    returned: allAdminParts.filter(p => p.status === 'pending' && p.returnHistory && p.returnHistory.length > 0).length,
+    rejected: allAdminParts.filter(p => p.status === 'rejected').length,
+    total: allAdminParts.length,
   };
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -301,9 +312,9 @@ export default function Index() {
     try {
       const snap = await getDocs(collection(db, 'parts'));
       let list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      list = list.filter(p => p.status === 'pending');
       list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-      setPendingParts(list);
+      setAllAdminParts(list);
+      setPendingParts(list.filter(p => p.status === 'pending'));
     } catch (e) {
       console.log('load pending error:', e);
     }
@@ -816,6 +827,7 @@ export default function Index() {
     navBadge: { position: 'absolute', top: -6, right: -10, backgroundColor: '#E11D2A', borderRadius: 10, minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
     navBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
     chatRowDot: { position: 'absolute', top: -2, right: -2, width: 12, height: 12, borderRadius: 6, backgroundColor: '#E11D2A', borderWidth: 2, borderColor: CT.card },
+    statCardOn: { borderWidth: 2, borderColor: CT.blue },
     adminMgr: { backgroundColor: CT.card, borderRadius: 14, padding: 14, marginHorizontal: 16, marginBottom: 16, borderWidth: 0.5, borderColor: CT.cardBorder },
     adminAddRow: { flexDirection: 'row', gap: 8, marginTop: 10, alignItems: 'center' },
     adminEmailInput: { flex: 1, backgroundColor: CT.bg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, color: CT.textPrimary, fontSize: 13, textAlign: 'right', borderWidth: 1, borderColor: CT.cardBorder },
@@ -1083,22 +1095,26 @@ export default function Index() {
   const renderAdmin = () => (
     <View style={{ flex: 1 }}>
       <View style={S.statsRow}>
-        <View style={S.statCard}>
+        <TouchableOpacity style={[S.statCard, adminTab === 'approved' && S.statCardOn]} onPress={() => setAdminTab('approved')}>
           <Text style={S.statNum}>{stats.approved}</Text>
           <Text style={S.statLabel}>معتمدة</Text>
-        </View>
-        <View style={S.statCard}>
+        </TouchableOpacity>
+        <TouchableOpacity style={[S.statCard, adminTab === 'pending' && S.statCardOn]} onPress={() => setAdminTab('pending')}>
           <Text style={[S.statNum, { color: CT.activeYellow }]}>{stats.pending}</Text>
-          <Text style={S.statLabel}>منتظرة</Text>
-        </View>
-        <View style={S.statCard}>
+          <Text style={S.statLabel}>جديدة</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[S.statCard, adminTab === 'returned' && S.statCardOn]} onPress={() => setAdminTab('returned')}>
           <Text style={[S.statNum, { color: CT.activeRed }]}>{stats.returned}</Text>
-          <Text style={S.statLabel}>سبق إرجاعها</Text>
-        </View>
-        <View style={S.statCard}>
+          <Text style={S.statLabel}>مرتجعة</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[S.statCard, adminTab === 'rejected' && S.statCardOn]} onPress={() => setAdminTab('rejected')}>
+          <Text style={[S.statNum, { color: CT.activeRed }]}>{stats.rejected}</Text>
+          <Text style={S.statLabel}>مرفوضة</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[S.statCard, adminTab === 'all' && S.statCardOn]} onPress={() => setAdminTab('all')}>
           <Text style={S.statNum}>{stats.total}</Text>
           <Text style={S.statLabel}>الإجمالي</Text>
-        </View>
+        </TouchableOpacity>
       </View>
       {isOwner && (
         <View style={S.adminMgr}>
@@ -1135,20 +1151,20 @@ export default function Index() {
       )}
 
       <View style={S.adminHdr}>
-        <Text style={S.adminTitle}>موافقة الإعلانات 🛡️</Text>
-        <Text style={S.adminSub}>{pendingParts.length > 0 ? `${pendingParts.length} إعلان بانتظار الموافقة` : 'لا توجد إعلانات منتظرة'}</Text>
+        <Text style={S.adminTitle}>{adminTab === 'approved' ? 'المعتمدة ✅' : adminTab === 'pending' ? 'الجديدة 🆕' : adminTab === 'returned' ? 'المرتجعة ⚠️' : adminTab === 'rejected' ? 'المرفوضة ❌' : 'كل الإعلانات 📋'}</Text>
+        <Text style={S.adminSub}>{adminFiltered.length} إعلان</Text>
       </View>
       {loadingPending ? (
         <ActivityIndicator size="large" color={CT.navy} style={{ marginTop: 40 }} />
-      ) : pendingParts.length === 0 ? (
+      ) : adminFiltered.length === 0 ? (
         <View style={S.emptyState}>
           <PulsingIcon name="checkmark-done-circle-outline" size={56} color={CT.activeGreen} />
-          <Text style={S.emptyTitle}>كل شيء تمام ✅</Text>
-          <Text style={S.emptySub}>لا توجد إعلانات تنتظر الموافقة حالياً.</Text>
+          <Text style={S.emptyTitle}>لا يوجد</Text>
+          <Text style={S.emptySub}>لا توجد إعلانات في هذا القسم.</Text>
         </View>
       ) : (
         <FlatList
-          data={pendingParts}
+          data={adminFiltered}
           keyExtractor={item => item.id}
           contentContainerStyle={{ paddingBottom: NAV_HEIGHT + 20, paddingTop: 8 }}
           refreshControl={<RefreshControl refreshing={loadingPending} onRefresh={loadPending} colors={[CT.navy]} tintColor={CT.navy} />}
