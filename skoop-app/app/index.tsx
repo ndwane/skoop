@@ -966,6 +966,11 @@ export default function Index() {
             <TouchableOpacity style={S.headerIconBtn} onPress={() => setShowProfileModal(true)}>
               <Ionicons name={isLoggedIn ? 'person' : 'person-outline'} size={20} color="white" />
             </TouchableOpacity>
+            {isAdmin && (
+              <TouchableOpacity style={S.headerIconBtn} onPress={() => { setActiveTab('admin'); loadPending(); }}>
+                <Ionicons name="shield" size={20} color="white" />
+              </TouchableOpacity>
+            )}
           </View>
           <LogoWhite width={130} height={32} />
         </View>
@@ -1006,7 +1011,7 @@ export default function Index() {
           { id: 'panel', iconOff: 'person-outline', iconOn: 'person', label: 'لوحتي' },
           { id: 'post', post: true, label: 'نشر' },
           { id: 'favorites', iconOff: 'heart-outline', iconOn: 'heart', label: 'المفضلة' },
-          ...(isAdmin ? [{ id: 'admin', iconOff: 'shield-outline', iconOn: 'shield', label: 'الإدارة' }] : []),
+          
           { id: 'settings', iconOff: 'settings-outline', iconOn: 'settings', label: 'إعدادات' },
         ].map(tab => {
           if (tab.post) {
