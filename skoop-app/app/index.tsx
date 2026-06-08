@@ -433,7 +433,7 @@ export default function Index() {
           carBrand: `${selectedBrand.label.split('/')[0].trim()} ${selectedModel || ''} ${carYear || ''}`.trim(),
           condition, price: parseInt(price) || 0, city: postCity, phone: phone.trim(),
           notes: notes.trim(), images, category: postCategory || 'cars',
-          status: 'pending', adminNote: '',
+          status: 'pending', adminNote: '', wasApproved: true,
         });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setSaving(false);
@@ -1050,7 +1050,12 @@ export default function Index() {
                   {item.sold && (<View style={[S.soldOverlay, { height: 160 }]}><View style={S.soldStamp}><Text style={S.soldStampText} numberOfLines={1}>{lang === 'ar' ? 'غير متوفر' : 'Sold'}</Text></View></View>)}
                 </View>
               )}
-              <Text style={S.adminCardName}>{item.partName}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <TouchableOpacity onPress={() => editMyPart(item)} style={{ padding: 4 }}>
+                  <Ionicons name="create-outline" size={22} color={CT.blue} />
+                </TouchableOpacity>
+                <Text style={[S.adminCardName, { flex: 1, textAlign: 'right' }]}>{item.partName}</Text>
+              </View>
               <Text style={S.adminCardInfo}>🚗 {item.carBrand || item.brandLabel || ''}</Text>
               <Text style={S.adminCardPrice}>{item.price > 0 ? `${item.price.toLocaleString()} د.إ` : '—'}</Text>
               {item.status === 'returned' ? (
