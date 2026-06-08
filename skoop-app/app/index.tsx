@@ -1142,20 +1142,24 @@ export default function Index() {
               <Text style={S.adminCardInfo}>📍 {item.city} · 📞 {item.phone}</Text>
               {item.notes ? <Text style={S.adminCardInfo}>📝 {item.notes}</Text> : null}
               <Text style={S.adminCardPrice}>{item.price > 0 ? `${item.price.toLocaleString()} د.إ` : '—'}</Text>
-              <View style={S.adminBtns}>
-                <TouchableOpacity style={S.approveBtn} onPress={() => approvePart(item.id)}>
-                  <Ionicons name="checkmark" size={18} color="#fff" />
-                  <Text style={S.approveText}>موافقة</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={S.rejectBtn} onPress={() => rejectPart(item.id)}>
-                  <Ionicons name="trash-outline" size={16} color={CT.activeRed} />
-                  <Text style={S.rejectText}>رفض</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[S.rejectBtn, { borderColor: CT.activeYellow }]} onPress={() => { setReturnTargetId(item.id); setReturnNote(''); setShowReturnModal(true); }}>
-                  <Ionicons name="arrow-undo-outline" size={16} color={CT.activeYellow} />
-                  <Text style={[S.rejectText, { color: CT.activeYellow }]}>إرجاع</Text>
-                </TouchableOpacity>
-              </View>
+              {can('canApprove') ? (
+                <View style={S.adminBtns}>
+                  <TouchableOpacity style={S.approveBtn} onPress={() => approvePart(item.id)}>
+                    <Ionicons name="checkmark" size={18} color="#fff" />
+                    <Text style={S.approveText}>موافقة</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={S.rejectBtn} onPress={() => rejectPart(item.id)}>
+                    <Ionicons name="trash-outline" size={16} color={CT.activeRed} />
+                    <Text style={S.rejectText}>رفض</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[S.rejectBtn, { borderColor: CT.activeYellow }]} onPress={() => { setReturnTargetId(item.id); setReturnNote(''); setShowReturnModal(true); }}>
+                    <Ionicons name="arrow-undo-outline" size={16} color={CT.activeYellow} />
+                    <Text style={[S.rejectText, { color: CT.activeYellow }]}>إرجاع</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <Text style={[S.emptySub, { textAlign: 'center', paddingVertical: 8 }]}>ليس لديك صلاحية الموافقة</Text>
+              )}
             </View>
           )}
         />
