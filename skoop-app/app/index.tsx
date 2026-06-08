@@ -208,6 +208,7 @@ export default function Index() {
   const [editingPartId, setEditingPartId] = useState(null);
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [returnNote, setReturnNote] = useState('');
+  const [returnMode, setReturnMode] = useState('return');
   const [returnTargetId, setReturnTargetId] = useState(null);
 
   const [parts, setParts] = useState([]);
@@ -287,7 +288,7 @@ export default function Index() {
     try {
       const snap = await getDocs(collection(db, 'parts'));
       let list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      list = list.filter(p => p.status === undefined || p.status === 'approved' || ((p.status === 'returned' || p.status === 'pending') && p.userId === user?.uid));
+      list = list.filter(p => p.status === undefined || p.status === 'approved' || ((p.status === 'returned' || p.status === 'pending' || p.status === 'rejected') && p.userId === user?.uid));
       list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       setParts(list);
     } catch (e) { console.log('load parts error:', e); }
@@ -335,18 +336,37 @@ export default function Index() {
   };
 
   const rejectPart = async (id) => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    Alert.alert('رفض الإعلان؟', 'سيتم حذف الإعلان نهائياً.', [
+    setReturnTargetId(id);
+    setReturnNote('');
+    setReturnMode('reject');
+    setShowReturnModal(true);
+  };
+
+  const resubmitPart = async (id, note) => {
+    try {
+      await updateDoc(doc(db, 'parts', id), { status: 'pending', sold: false, wasApproved: true, sellerNote: note || '' });
+      loadParts();
+    } catch (e) { Alert.alert('خطأ', 'تعذّر إعادة الإرسال'); }
+  };
+  const openResubmit = (id) => {
+    setReturnTargetId(id);
+    setReturnNote('');
+    setReturnMode('resubmit');
+    setShowReturnModal(true);
+  };
+
+  const rejectDeleteOwn = async (id) => {
+    Alert.alert('حذف الإعلان؟', 'سيُحذف نهائياً.', [
       { text: 'إلغاء', style: 'cancel' },
-      { text: 'حذف', style: 'destructive', onPress: async () => {
-        try {
-          await deleteDoc(doc(db, 'parts', id));
-          setPendingParts(prev => prev.filter(p => p.id !== id));
-        } catch (e) {
-          Alert.alert('خطأ', 'لم يتم الحذف');
-        }
-      }}
+      { text: 'حذف', style: 'destructive', onPress: async () => { try { await deleteDoc(doc(db, 'parts', id)); loadParts(); } catch (e) {} } },
     ]);
+  };
+
+  const confirmReject = async (id, note) => {
+    try {
+      await updateDoc(doc(db, 'parts', id), { status: 'rejected', adminNote: note || '' });
+      setPendingParts(prev => prev.filter(p => p.id !== id));
+    } catch (e) { Alert.alert('خطأ', 'تعذّر الرفض'); }
   };
 
   const resetPostForm = () => {
@@ -1036,10 +1056,21 @@ export default function Index() {
                 <View style={[S.returnedBanner, { backgroundColor: CT.tagBg, borderColor: CT.cardBorder }]}>
                   <Text style={[S.returnedTitle, { color: CT.textMuted }]}>⏳ بانتظار موافقة الإدارة</Text>
                 </View>
+              ) : item.status === 'rejected' ? (
+                <>
+                  <View style={[S.returnedBanner, { backgroundColor: '#FEE2E2', borderColor: CT.activeRed }]}>
+                    <Text style={[S.returnedTitle, { color: CT.activeRed }]}>❌ مرفوض</Text>
+                    <Text style={S.returnedNote}>{item.adminNote || 'لم يُقبل الإعلان.'}</Text>
+                  </View>
+                  <TouchableOpacity style={[S.editPartBtn, { backgroundColor: CT.activeRed }]} onPress={() => rejectDeleteOwn(item.id)}>
+                    <Ionicons name="trash-outline" size={18} color="#fff" />
+                    <Text style={S.editPartText}>حذف الإعلان</Text>
+                  </TouchableOpacity>
+                </>
               ) : (
-                <TouchableOpacity style={[S.callBtn, { marginBottom: 0, backgroundColor: item.sold ? CT.activeGreen : '#E11D2A' }]} onPress={() => toggleSold(item)}>
+                <TouchableOpacity style={[S.callBtn, { marginBottom: 0, backgroundColor: item.sold ? CT.navyDark : '#E11D2A' }]} onPress={() => { if (item.sold) openResubmit(item.id); else toggleSold(item); }}>
                   <Ionicons name={item.sold ? 'refresh' : 'checkmark-done'} size={18} color="#fff" />
-                  <Text style={S.callText}>{item.sold ? 'إعادة توفير' : 'تمّ البيع'}</Text>
+                  <Text style={S.callText}>{item.sold ? 'إعادة إرسال' : 'تمّ البيع'}</Text>
                 </TouchableOpacity>
               )}
             </TouchableOpacity>
@@ -1391,10 +1422,19 @@ export default function Index() {
                   </TouchableOpacity>
                 ) : null}
                 {isLoggedIn && selectedPart.userId === user?.uid ? (
-                  <TouchableOpacity style={[S.callBtn, { backgroundColor: selectedPart.sold ? CT.activeGreen : '#E11D2A' }]} onPress={() => { toggleSold(selectedPart); setSelectedPart({ ...selectedPart, sold: !selectedPart.sold }); }}>
-                    <Ionicons name={selectedPart.sold ? 'refresh' : 'checkmark-done'} size={18} color="#fff" />
-                    <Text style={S.callText}>{selectedPart.sold ? (lang === 'ar' ? 'إعادة توفير القطعة' : 'Mark Available') : (lang === 'ar' ? 'تمّ البيع (غير متوفر)' : 'Mark as Sold')}</Text>
-                  </TouchableOpacity>
+                  (selectedPart.status === undefined || selectedPart.status === 'approved') ? (
+                    <TouchableOpacity style={[S.callBtn, { backgroundColor: selectedPart.sold ? CT.navyDark : '#E11D2A' }]} onPress={() => { if (selectedPart.sold) { setShowDetails(false); openResubmit(selectedPart.id); } else { toggleSold(selectedPart); setSelectedPart({ ...selectedPart, sold: true }); } }}>
+                      <Ionicons name={selectedPart.sold ? 'refresh' : 'checkmark-done'} size={18} color="#fff" />
+                      <Text style={S.callText}>{selectedPart.sold ? 'إعادة إرسال' : (lang === 'ar' ? 'تمّ البيع (غير متوفر)' : 'Mark as Sold')}</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={[S.returnedBanner, { backgroundColor: selectedPart.status === 'rejected' ? '#FEE2E2' : CT.tagBg, borderColor: selectedPart.status === 'rejected' ? CT.activeRed : CT.cardBorder }]}>
+                      <Text style={[S.returnedTitle, { color: selectedPart.status === 'rejected' ? CT.activeRed : CT.textMuted }]}>
+                        {selectedPart.status === 'rejected' ? '❌ مرفوض' : selectedPart.status === 'returned' ? '⚠️ مُرجع للتعديل' : '⏳ بانتظار الموافقة'}
+                      </Text>
+                      {!!selectedPart.adminNote && <Text style={S.returnedNote}>{selectedPart.adminNote}</Text>}
+                    </View>
+                  )
                 ) : (
                   <>
                     <TouchableOpacity style={[S.callBtn, { marginBottom: 10 }]} onPress={() => openChat(selectedPart)}>
@@ -1558,12 +1598,12 @@ export default function Index() {
 
       <Modal visible={showReturnModal} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setShowReturnModal(false)}>
         <View style={[S.modalOverlay, { justifyContent: 'center', padding: 24 }]}>
-          <View style={[S.modalBox, { borderRadius: 20, maxHeight: 'auto' }]}>
-            <Text style={[S.modalTitle, { textAlign: 'right', marginBottom: 12 }]}>إرجاع الإعلان للتعديل</Text>
-            <Text style={[S.label, { marginTop: 0 }]}>سبب الإرجاع (يظهر للمستخدم)</Text>
-            <TextInput style={[S.input, { height: 90, textAlignVertical: 'top', paddingTop: 12 }]} placeholder="مثال: الصورة غير واضحة، أضف صورة أوضح" placeholderTextColor={CT.textMuted} value={returnNote} onChangeText={setReturnNote} multiline />
-            <TouchableOpacity style={[S.submitBtn, { marginBottom: 8 }]} onPress={() => { returnPart(returnTargetId, returnNote); setShowReturnModal(false); }}>
-              <Text style={S.submitText}>إرسال الإرجاع</Text>
+          <View style={[S.modalBox, { borderRadius: 20, maxHeight: 'auto', marginBottom: kbHeight }]}>
+            <Text style={[S.modalTitle, { textAlign: 'right', marginBottom: 12 }]}>{returnMode === 'reject' ? 'رفض الإعلان' : returnMode === 'resubmit' ? 'إعادة إرسال الإعلان' : 'إرجاع الإعلان للتعديل'}</Text>
+            <Text style={[S.label, { marginTop: 0 }]}>{returnMode === 'reject' ? 'سبب الرفض (يظهر للمستخدم)' : returnMode === 'resubmit' ? 'ملاحظة (تظهر للإدارة)' : 'سبب الإرجاع (يظهر للمستخدم)'}</Text>
+            <TextInput style={[S.input, { height: 90, textAlignVertical: 'top', paddingTop: 12 }]} placeholder={returnMode === 'resubmit' ? 'مثال: إعادة عرض الإعلان، تم تغيير السعر' : 'مثال: المعلومات غير مكتملة'} placeholderTextColor={CT.textMuted} value={returnNote} onChangeText={setReturnNote} multiline />
+            <TouchableOpacity style={[S.submitBtn, { marginBottom: 8, backgroundColor: returnMode === 'reject' ? CT.activeRed : CT.navyDark }]} onPress={() => { if (returnMode === 'reject') confirmReject(returnTargetId, returnNote); else if (returnMode === 'resubmit') resubmitPart(returnTargetId, returnNote); else returnPart(returnTargetId, returnNote); setShowReturnModal(false); setReturnMode('return'); }}>
+              <Text style={S.submitText}>{returnMode === 'reject' ? 'تأكيد الرفض' : returnMode === 'resubmit' ? 'إرسال للإدارة' : 'إرسال الإرجاع'}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={{ alignItems: 'center', padding: 8 }} onPress={() => setShowReturnModal(false)}>
               <Text style={{ color: CT.textMuted }}>إلغاء</Text>
