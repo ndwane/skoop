@@ -253,6 +253,13 @@ export default function Index() {
   useEffect(() => { if (isAdmin) loadPending(); }, [isAdmin]);
   useEffect(() => { if (isLoggedIn) loadMyProfile(); }, [isLoggedIn]);
   const [myChats, setMyChats] = useState([]);
+  const chatUnread = (c) => {
+    if (!c.lastMessage || c.lastSenderId === user?.uid) return false;
+    const lastRead = myProfile?.chatReads?.[c.id];
+    if (!lastRead) return true;
+    return (c.updatedAt || '') > lastRead;
+  };
+  const totalUnread = myChats.filter(chatUnread).length;
   useEffect(() => {
     if (!isLoggedIn || !user?.uid) { setMyChats([]); return; }
     const q = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid));
@@ -457,6 +464,14 @@ export default function Index() {
     } catch (e) { return ''; }
   };
 
+  const markChatRead = async (chatId) => {
+    if (!user?.uid || !chatId) return;
+    try {
+      await setDoc(doc(db, 'users', user.uid), { chatReads: { [chatId]: new Date().toISOString() } }, { merge: true });
+      setMyProfile(prev => prev ? { ...prev, chatReads: { ...(prev.chatReads || {}), [chatId]: new Date().toISOString() } } : prev);
+    } catch (e) {}
+  };
+
   const sendChatImage = async (fromCamera) => {
     try {
       const perm = fromCamera
@@ -473,7 +488,7 @@ export default function Index() {
       await addDoc(collection(db, 'chats', activeChat.id, 'messages'), {
         image: img, senderId: user.uid, createdAt: new Date().toISOString(),
       });
-      await updateDoc(doc(db, 'chats', activeChat.id), { lastMessage: '📷 صورة', updatedAt: new Date().toISOString() });
+      await updateDoc(doc(db, 'chats', activeChat.id), { lastMessage: '📷 صورة', lastSenderId: user.uid, updatedAt: new Date().toISOString() });
     } catch (e) { Alert.alert('خطأ', 'تعذّر إرسال الصورة'); }
   };
 
@@ -493,7 +508,7 @@ export default function Index() {
       await addDoc(collection(db, 'chats', activeChat.id, 'messages'), {
         text, senderId: user.uid, createdAt: new Date().toISOString(),
       });
-      await updateDoc(doc(db, 'chats', activeChat.id), { lastMessage: text, updatedAt: new Date().toISOString() });
+      await updateDoc(doc(db, 'chats', activeChat.id), { lastMessage: text, lastSenderId: user.uid, updatedAt: new Date().toISOString() });
     } catch (e) { Alert.alert('خطأ', 'لم تُرسل الرسالة'); }
   };
 
@@ -504,6 +519,7 @@ export default function Index() {
       const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       msgs.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
       setChatMessages(msgs);
+      markChatRead(activeChat.id);
     });
     return () => unsub();
   }, [activeChat?.id]);
@@ -745,6 +761,9 @@ export default function Index() {
     chatRowName: { fontSize: 15, fontWeight: '700', color: CT.textPrimary, textAlign: 'right' },
     chatRowMsg: { fontSize: 12, color: CT.textSecondary, textAlign: 'right', marginTop: 2 },
     chatRowAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: CT.bg, justifyContent: 'center', alignItems: 'center' },
+    navBadge: { position: 'absolute', top: -6, right: -10, backgroundColor: '#E11D2A', borderRadius: 10, minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
+    navBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+    chatRowDot: { position: 'absolute', top: -2, right: -2, width: 12, height: 12, borderRadius: 6, backgroundColor: '#E11D2A', borderWidth: 2, borderColor: CT.card },
     histBox: { backgroundColor: CT.activeYellowBg, borderRadius: 10, padding: 10, marginVertical: 8, borderWidth: 1, borderColor: CT.activeYellow },
     histTitle: { fontSize: 12, fontWeight: '800', color: CT.activeYellow, textAlign: 'right' },
     histLine: { fontSize: 12, color: CT.textSecondary, textAlign: 'right' },
@@ -912,14 +931,18 @@ export default function Index() {
             <Text style={S.settingsSecLabel}>رسائلي ({myChats.length})</Text>
             {myChats.map(c => {
               const otherName = c.buyerId === user?.uid ? c.sellerName : c.buyerName;
+              const unread = chatUnread(c);
               return (
                 <TouchableOpacity key={c.id} style={S.chatRow} onPress={() => { setActiveChat({ id: c.id, partName: c.partName, otherName }); setShowChat(true); }}>
                   <Ionicons name="chevron-back" size={18} color={CT.textMuted} />
                   <View style={{ flex: 1 }}>
-                    <Text style={S.chatRowName} numberOfLines={1}>{otherName || 'مستخدم'}</Text>
-                    <Text style={S.chatRowMsg} numberOfLines={1}>{c.lastMessage || 'لا رسائل'}</Text>
+                    <Text style={[S.chatRowName, unread && { fontWeight: '900' }]} numberOfLines={1}>{otherName || 'مستخدم'}</Text>
+                    <Text style={[S.chatRowMsg, unread && { color: CT.textPrimary, fontWeight: '700' }]} numberOfLines={1}>{c.lastMessage || 'لا رسائل'}</Text>
                   </View>
-                  <View style={S.chatRowAvatar}><Ionicons name="chatbubble-ellipses" size={18} color={CT.navy} /></View>
+                  <View style={S.chatRowAvatar}>
+                    <Ionicons name="chatbubble-ellipses" size={18} color={CT.navy} />
+                    {unread && <View style={S.chatRowDot} />}
+                  </View>
                 </TouchableOpacity>
               );
             })}
@@ -1168,7 +1191,12 @@ export default function Index() {
           const isOn = activeTab === tab.id;
           return (
             <TouchableOpacity key={tab.id} style={S.navItem} onPress={() => { setActiveTab(tab.id); if (tab.id === 'home') setSelectedCategory(null); if (tab.id === 'admin') loadPending(); }}>
-              <Ionicons name={isOn ? tab.iconOn : tab.iconOff} size={24} color={isOn ? CT.blue : CT.textMuted} />
+              <View>
+                <Ionicons name={isOn ? tab.iconOn : tab.iconOff} size={24} color={isOn ? CT.blue : CT.textMuted} />
+                {tab.id === 'panel' && totalUnread > 0 && (
+                  <View style={S.navBadge}><Text style={S.navBadgeText}>{totalUnread > 9 ? '9+' : totalUnread}</Text></View>
+                )}
+              </View>
               <Text style={[S.navLabel, isOn && S.navLabelOn]}>{tab.label}</Text>
             </TouchableOpacity>
           );
