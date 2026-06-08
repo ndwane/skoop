@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
   StyleSheet, ActivityIndicator, ScrollView, Modal,
@@ -10,7 +10,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import Svg, { Line, Circle, Path, Text as SvgText } from 'react-native-svg';
-import { db, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, setDoc, getDoc, onSnapshot, query, serverTimestamp } from '../firebase';
+import { db, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, setDoc, getDoc } from '../firebase';
 import { router } from 'expo-router';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -252,16 +252,6 @@ export default function Index() {
   useEffect(() => { loadParts(); }, []);
   useEffect(() => { if (isAdmin) loadPending(); }, [isAdmin]);
   useEffect(() => { if (isLoggedIn) loadMyProfile(); }, [isLoggedIn]);
-  useEffect(() => {
-    if (!activeChat?.id) return;
-    const q = query(collection(db, 'chats', activeChat.id, 'messages'));
-    const unsub = onSnapshot(q, (snap) => {
-      const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      msgs.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
-      setChatMessages(msgs);
-    });
-    return () => unsub();
-  }, [activeChat?.id]);
 
   const loadParts = async () => {
     try {
@@ -409,45 +399,6 @@ export default function Index() {
   };
 
   const callSeller = (p) => { if (p) Linking.openURL('tel:' + p); };
-
-  const [activeChat, setActiveChat] = useState(null);
-  const [chatMessages, setChatMessages] = useState([]);
-  const [chatInput, setChatInput] = useState('');
-  const [showChat, setShowChat] = useState(false);
-
-  const openChat = async (part) => {
-    if (!isLoggedIn) { Alert.alert('', 'سجّل الدخول للمراسلة'); return; }
-    if (part.userId === user?.uid) { Alert.alert('', 'هذا إعلانك'); return; }
-    const cid = `${part.id}_${user.uid}_${part.userId}`;
-    const chatRef = doc(db, 'chats', cid);
-    try {
-      const snap = await getDoc(chatRef);
-      if (!snap.exists()) {
-        await setDoc(chatRef, {
-          partId: part.id, partName: part.partName,
-          buyerId: user.uid, buyerName: myProfile?.name || user?.displayName || 'مشتري',
-          sellerId: part.userId, sellerName: part.userName || 'بائع',
-          participants: [user.uid, part.userId],
-          lastMessage: '', updatedAt: new Date().toISOString(),
-        });
-      }
-      setActiveChat({ id: cid, partName: part.partName, otherName: part.userName || 'بائع' });
-      setShowDetails(false);
-      setShowChat(true);
-    } catch (e) { Alert.alert('خطأ', 'تعذّر فتح المحادثة'); }
-  };
-
-  const sendMessage = async () => {
-    if (!chatInput.trim() || !activeChat) return;
-    const text = chatInput.trim();
-    setChatInput('');
-    try {
-      await addDoc(collection(db, 'chats', activeChat.id, 'messages'), {
-        text, senderId: user.uid, createdAt: new Date().toISOString(),
-      });
-      await updateDoc(doc(db, 'chats', activeChat.id), { lastMessage: text, updatedAt: new Date().toISOString() });
-    } catch (e) { Alert.alert('خطأ', 'لم تُرسل الرسالة'); }
-  };
 
   const loadMyProfile = async () => {
     if (!user?.uid) return;
@@ -670,17 +621,6 @@ export default function Index() {
     approveText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
     rejectBtn: { flex: 1, backgroundColor: CT.activeRedBg, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: CT.activeRed },
     rejectText: { color: CT.activeRed, fontWeight: 'bold', fontSize: 14 },
-    chatHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: CT.hdrBg, paddingTop: insets.top + 10 },
-    chatHeaderTitle: { fontSize: 16, fontWeight: '700', color: '#fff', textAlign: 'right', flex: 1 },
-    chatHeaderSub: { fontSize: 11, color: 'rgba(255,255,255,0.7)', textAlign: 'right' },
-    msgBubble: { maxWidth: '78%', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 9, marginVertical: 3 },
-    msgMine: { backgroundColor: CT.navyDark, alignSelf: 'flex-end', borderBottomRightRadius: 4 },
-    msgTheirs: { backgroundColor: CT.card, alignSelf: 'flex-start', borderBottomLeftRadius: 4, borderWidth: 0.5, borderColor: CT.cardBorder },
-    msgTextMine: { color: '#fff', fontSize: 14, textAlign: 'right' },
-    msgTextTheirs: { color: CT.textPrimary, fontSize: 14, textAlign: 'right' },
-    chatInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderTopWidth: 0.5, borderTopColor: CT.cardBorder, backgroundColor: CT.card },
-    chatInputField: { flex: 1, backgroundColor: CT.bg, borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10, color: CT.textPrimary, fontSize: 14, textAlign: 'right', borderWidth: 1, borderColor: CT.cardBorder },
-    chatSend: { width: 44, height: 44, borderRadius: 22, backgroundColor: CT.navyDark, justifyContent: 'center', alignItems: 'center' },
     histBox: { backgroundColor: CT.activeYellowBg, borderRadius: 10, padding: 10, marginVertical: 8, borderWidth: 1, borderColor: CT.activeYellow },
     histTitle: { fontSize: 12, fontWeight: '800', color: CT.activeYellow, textAlign: 'right' },
     histLine: { fontSize: 12, color: CT.textSecondary, textAlign: 'right' },
@@ -1092,40 +1032,6 @@ export default function Index() {
         })}
       </View>
 
-      <Modal visible={showChat} animationType="slide" onRequestClose={() => setShowChat(false)}>
-        <View style={{ flex: 1, backgroundColor: CT.bg }}>
-          <View style={S.chatHeader}>
-            <TouchableOpacity onPress={() => { setShowChat(false); setActiveChat(null); setChatMessages([]); }}>
-              <Ionicons name="arrow-forward" size={24} color="#fff" />
-            </TouchableOpacity>
-            <View style={{ flex: 1 }}>
-              <Text style={S.chatHeaderTitle}>{activeChat?.otherName || 'محادثة'}</Text>
-              <Text style={S.chatHeaderSub}>{activeChat?.partName || ''}</Text>
-            </View>
-          </View>
-          <FlatList
-            data={chatMessages}
-            keyExtractor={item => item.id}
-            contentContainerStyle={{ padding: 14, paddingBottom: 20 }}
-            renderItem={({ item }) => {
-              const mine = item.senderId === user?.uid;
-              return (
-                <View style={[S.msgBubble, mine ? S.msgMine : S.msgTheirs]}>
-                  <Text style={mine ? S.msgTextMine : S.msgTextTheirs}>{item.text}</Text>
-                </View>
-              );
-            }}
-            ListEmptyComponent={<View style={{ alignItems: 'center', paddingTop: 60 }}><Ionicons name="chatbubbles-outline" size={50} color={CT.textMuted} /><Text style={[S.emptySub, { marginTop: 12 }]}>ابدأ المحادثة 👋</Text></View>}
-          />
-          <View style={[S.chatInputRow, { paddingBottom: insets.bottom + 10 }]}>
-            <TouchableOpacity style={S.chatSend} onPress={sendMessage}>
-              <Ionicons name="send" size={20} color="#fff" />
-            </TouchableOpacity>
-            <TextInput style={S.chatInputField} placeholder="اكتب رسالة..." placeholderTextColor={CT.textMuted} value={chatInput} onChangeText={setChatInput} multiline />
-          </View>
-        </View>
-      </Modal>
-
       <Modal visible={showSeller} animationType="slide" transparent statusBarTranslucent onRequestClose={() => setShowSeller(false)}>
         <View style={S.modalOverlay}>
           <View style={S.modalBox}>
@@ -1193,16 +1099,10 @@ export default function Index() {
                     <Text style={S.callText}>{selectedPart.sold ? (lang === 'ar' ? 'إعادة توفير القطعة' : 'Mark Available') : (lang === 'ar' ? 'تمّ البيع (غير متوفر)' : 'Mark as Sold')}</Text>
                   </TouchableOpacity>
                 ) : (
-                  <>
-                    <TouchableOpacity style={[S.callBtn, { marginBottom: 10 }]} onPress={() => openChat(selectedPart)}>
-                      <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
-                      <Text style={S.callText}>مراسلة البائع</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[S.callBtn, { backgroundColor: '#16A34A' }]} onPress={() => callSeller(selectedPart.phone)}>
-                      <Ionicons name="call" size={18} color="#fff" />
-                      <Text style={S.callText}>اتصل بالبائع</Text>
-                    </TouchableOpacity>
-                  </>
+                  <TouchableOpacity style={S.callBtn} onPress={() => callSeller(selectedPart.phone)}>
+                    <Ionicons name="call" size={18} color="#fff" />
+                    <Text style={S.callText}>اتصل بالبائع</Text>
+                  </TouchableOpacity>
                 )}
               </ScrollView>
             )}
