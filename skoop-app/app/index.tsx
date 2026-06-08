@@ -10,7 +10,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import Svg, { Line, Circle, Path, Text as SvgText } from 'react-native-svg';
-import { db, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, setDoc, getDoc, onSnapshot, query, serverTimestamp } from '../firebase';
+import { db, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, setDoc, getDoc, onSnapshot, query, where, serverTimestamp } from '../firebase';
 import { router } from 'expo-router';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -252,6 +252,17 @@ export default function Index() {
   useEffect(() => { loadParts(); }, []);
   useEffect(() => { if (isAdmin) loadPending(); }, [isAdmin]);
   useEffect(() => { if (isLoggedIn) loadMyProfile(); }, [isLoggedIn]);
+  const [myChats, setMyChats] = useState([]);
+  useEffect(() => {
+    if (!isLoggedIn || !user?.uid) { setMyChats([]); return; }
+    const q = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid));
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      list.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+      setMyChats(list);
+    });
+    return () => unsub();
+  }, [isLoggedIn, user?.uid]);
 
   const loadParts = async () => {
     try {
@@ -730,6 +741,10 @@ export default function Index() {
     chatInputField: { flex: 1, backgroundColor: CT.bg, borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10, color: CT.textPrimary, fontSize: 14, textAlign: 'right', borderWidth: 1, borderColor: CT.cardBorder },
     chatSend: { width: 44, height: 44, borderRadius: 22, backgroundColor: CT.navyDark, justifyContent: 'center', alignItems: 'center' },
     chatAttach: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+    chatRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: CT.card, borderRadius: 14, padding: 12, marginHorizontal: 16, marginBottom: 8, borderWidth: 0.5, borderColor: CT.cardBorder },
+    chatRowName: { fontSize: 15, fontWeight: '700', color: CT.textPrimary, textAlign: 'right' },
+    chatRowMsg: { fontSize: 12, color: CT.textSecondary, textAlign: 'right', marginTop: 2 },
+    chatRowAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: CT.bg, justifyContent: 'center', alignItems: 'center' },
     histBox: { backgroundColor: CT.activeYellowBg, borderRadius: 10, padding: 10, marginVertical: 8, borderWidth: 1, borderColor: CT.activeYellow },
     histTitle: { fontSize: 12, fontWeight: '800', color: CT.activeYellow, textAlign: 'right' },
     histLine: { fontSize: 12, color: CT.textSecondary, textAlign: 'right' },
@@ -891,6 +906,25 @@ export default function Index() {
           </View>
           
         </View>
+
+        {myChats.length > 0 && (
+          <>
+            <Text style={S.settingsSecLabel}>رسائلي ({myChats.length})</Text>
+            {myChats.map(c => {
+              const otherName = c.buyerId === user?.uid ? c.sellerName : c.buyerName;
+              return (
+                <TouchableOpacity key={c.id} style={S.chatRow} onPress={() => { setActiveChat({ id: c.id, partName: c.partName, otherName }); setShowChat(true); }}>
+                  <Ionicons name="chevron-back" size={18} color={CT.textMuted} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={S.chatRowName} numberOfLines={1}>{otherName || 'مستخدم'}</Text>
+                    <Text style={S.chatRowMsg} numberOfLines={1}>{c.lastMessage || 'لا رسائل'}</Text>
+                  </View>
+                  <View style={S.chatRowAvatar}><Ionicons name="chatbubble-ellipses" size={18} color={CT.navy} /></View>
+                </TouchableOpacity>
+              );
+            })}
+          </>
+        )}
 
         <Text style={S.settingsSecLabel}>إعلاناتي</Text>
         <View style={S.filterRow}>
