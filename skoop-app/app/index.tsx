@@ -199,6 +199,7 @@ export default function Index() {
   const [epCompanyName, setEpCompanyName] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [panelFilter, setPanelFilter] = useState('all');
+  const [favorites, setFavorites] = useState([]);
   const [editingPartId, setEditingPartId] = useState(null);
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [returnNote, setReturnNote] = useState('');
@@ -403,8 +404,8 @@ export default function Index() {
     if (!user?.uid) return;
     try {
       const snap = await getDoc(doc(db, 'users', user.uid));
-      if (snap.exists()) setMyProfile({ id: snap.id, ...snap.data() });
-      else setMyProfile(null);
+      if (snap.exists()) { const d = snap.data(); setMyProfile({ id: snap.id, ...d }); setFavorites(d.favorites || []); }
+      else { setMyProfile(null); setFavorites([]); }
     } catch (e) { console.log('load profile error:', e); }
   };
 
@@ -438,6 +439,18 @@ export default function Index() {
   };
 
   const myParts = parts.filter(p => p.userId && p.userId === user?.uid);
+
+  const toggleFavorite = async (partId) => {
+    if (!user?.uid) { Alert.alert('', 'سجّل الدخول لحفظ المفضلة'); return; }
+    const next = favorites.includes(partId) ? favorites.filter(id => id !== partId) : [...favorites, partId];
+    setFavorites(next);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await setDoc(doc(db, 'users', user.uid), { favorites: next }, { merge: true });
+    } catch (e) { console.log('fav error:', e); }
+  };
+
+  const favoriteParts = parts.filter(p => favorites.includes(p.id) && !p.sold);
 
   const editMyPart = (part) => {
     setEditingPartId(part.id);
@@ -520,6 +533,7 @@ export default function Index() {
     cityChipTextOn: { color: '#fff', fontWeight: '700' },
     card: { width: CARD_W, backgroundColor: CT.card, borderRadius: 14, overflow: 'hidden', borderWidth: 0.5, borderColor: CT.cardBorder, marginBottom: 10, padding: 12 },
     cardImg: { width: '100%', height: CARD_W * 0.7, borderRadius: 10, marginBottom: 8 },
+    favHeart: { position: 'absolute', top: 8, left: 8, width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', zIndex: 6 },
     cardImgPlaceholder: { width: '100%', height: CARD_W * 0.7, borderRadius: 10, marginBottom: 8, backgroundColor: CT.tagBg, justifyContent: 'center', alignItems: 'center' },
     cardName: { color: CT.textPrimary, fontSize: 14, fontWeight: '700', textAlign: 'right', marginBottom: 4 },
     cardBrand: { color: CT.textSecondary, fontSize: 11, textAlign: 'right', marginBottom: 8 },
@@ -650,6 +664,9 @@ export default function Index() {
             <View style={S.soldStamp}><Text style={S.soldStampText} numberOfLines={1}>{lang === 'ar' ? 'غير متوفر' : 'Sold'}</Text></View>
           </View>
         )}
+        <TouchableOpacity style={S.favHeart} onPress={() => toggleFavorite(item.id)}>
+          <Ionicons name={favorites.includes(item.id) ? 'heart' : 'heart-outline'} size={20} color={favorites.includes(item.id) ? '#E11D2A' : '#fff'} />
+        </TouchableOpacity>
       </View>
       <Text style={S.cardName} numberOfLines={1}>{item.partName}</Text>
       <Text style={S.cardBrand} numberOfLines={1}>🚗 {item.carBrand || item.brandLabel || ''}</Text>
@@ -964,11 +981,20 @@ export default function Index() {
         {activeTab === 'home' && renderHome()}
         {activeTab === 'panel' && renderPanel()}
         {activeTab === 'favorites' && (
-          <View style={S.emptyState}>
-            <PulsingIcon name="heart-outline" size={56} color={CT.navy} />
-            <Text style={S.emptyTitle}>المفضلة</Text>
-            <Text style={S.emptySub}>قريباً — احفظ القطع المفضلة لديك هنا.</Text>
-          </View>
+          favoriteParts.length === 0 ? (
+            <View style={S.emptyState}>
+              <PulsingIcon name="heart-outline" size={56} color={CT.navy} />
+              <Text style={S.emptyTitle}>المفضلة فارغة</Text>
+              <Text style={S.emptySub}>اضغط ♡ على أي قطعة لحفظها هنا.</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={favoriteParts} keyExtractor={item => item.id} numColumns={2}
+              columnWrapperStyle={{ justifyContent: 'space-between', paddingHorizontal: 16 }}
+              contentContainerStyle={{ paddingBottom: NAV_HEIGHT + 20, paddingTop: 12 }}
+              renderItem={renderCard}
+            />
+          )
         )}
         {activeTab === 'settings' && renderSettings()}
         {activeTab === 'admin' && renderAdmin()}
@@ -1032,9 +1058,11 @@ export default function Index() {
           <View style={S.modalBox}>
             <View style={S.modalHandle} />
             <View style={S.modalHdr}>
-              <View style={{ width: 24 }} />
-              <Text style={S.modalTitle}>تفاصيل القطعة</Text>
               <TouchableOpacity onPress={() => setShowDetails(false)}><Ionicons name="close" size={24} color={CT.textSecondary} /></TouchableOpacity>
+              <Text style={S.modalTitle}>تفاصيل القطعة</Text>
+              <TouchableOpacity onPress={() => selectedPart && toggleFavorite(selectedPart.id)}>
+                <Ionicons name={selectedPart && favorites.includes(selectedPart.id) ? 'heart' : 'heart-outline'} size={24} color={selectedPart && favorites.includes(selectedPart.id) ? '#E11D2A' : CT.textSecondary} />
+              </TouchableOpacity>
             </View>
             {selectedPart && (
               <ScrollView showsVerticalScrollIndicator={false}>
