@@ -537,9 +537,6 @@ export default function Index() {
     navItem: { flex: 1, alignItems: 'center' },
     navLabel: { fontSize: 10, color: CT.textMuted, marginTop: 2 },
     navLabelOn: { color: CT.blue, fontWeight: '700' },
-    navPostBtn: { flex: 1, alignItems: 'center', justifyContent: 'flex-start' },
-    navPostCircle: { width: 52, height: 52, borderRadius: 26, backgroundColor: CT.navyDark, justifyContent: 'center', alignItems: 'center', marginTop: -18, borderWidth: 4, borderColor: CT.navBg, elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 6 },
-    navPostLabel: { fontSize: 10, color: CT.blue, fontWeight: '700', marginTop: 3 },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
     modalBox: { backgroundColor: CT.modalBg, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, maxHeight: '94%' },
     modalHandle: { width: 44, height: 5, backgroundColor: CT.cardBorder, borderRadius: 3, alignSelf: 'center', marginBottom: 18 },
@@ -682,7 +679,10 @@ export default function Index() {
           );
         })}
       </View>
-      
+      <TouchableOpacity style={[S.fab, { position: 'relative', bottom: 0, left: 0, alignSelf: 'center', marginTop: 20 }]} onPress={() => { resetPostForm(); setShowPost(true); }}>
+        <Ionicons name="add" size={22} color="#fff" />
+        <Text style={S.fabText}>أضف قطعة</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 
@@ -725,7 +725,10 @@ export default function Index() {
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadParts(); }} colors={[CT.navy]} tintColor={CT.navy} />}
           />
         )}
-        
+        <TouchableOpacity style={S.fab} onPress={() => { resetPostForm(); setShowPost(true); }}>
+          <Ionicons name="add" size={22} color="#fff" />
+          <Text style={S.fabText}>أضف قطعة</Text>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -963,13 +966,6 @@ export default function Index() {
       <View style={{ flex: 1 }}>
         {activeTab === 'home' && renderHome()}
         {activeTab === 'panel' && renderPanel()}
-        {activeTab === 'favorites' && (
-          <View style={S.emptyState}>
-            <PulsingIcon name="heart-outline" size={56} color={CT.navy} />
-            <Text style={S.emptyTitle}>المفضلة</Text>
-            <Text style={S.emptySub}>قريباً — احفظ القطع المفضلة لديك هنا.</Text>
-          </View>
-        )}
         {activeTab === 'settings' && renderSettings()}
         {activeTab === 'admin' && renderAdmin()}
       </View>
@@ -978,19 +974,9 @@ export default function Index() {
         {[
           { id: 'home', iconOff: 'home-outline', iconOn: 'home', label: 'القطع' },
           { id: 'panel', iconOff: 'person-outline', iconOn: 'person', label: 'لوحتي' },
-          { id: 'post', post: true, label: 'نشر' },
-          { id: 'favorites', iconOff: 'heart-outline', iconOn: 'heart', label: 'المفضلة' },
           ...(isAdmin ? [{ id: 'admin', iconOff: 'shield-outline', iconOn: 'shield', label: 'الإدارة' }] : []),
           { id: 'settings', iconOff: 'settings-outline', iconOn: 'settings', label: 'إعدادات' },
         ].map(tab => {
-          if (tab.post) {
-            return (
-              <TouchableOpacity key={tab.id} style={S.navPostBtn} onPress={() => { setEditingPartId(null); resetPostForm(); setShowPost(true); }}>
-                <View style={S.navPostCircle}><Ionicons name="add" size={30} color="#fff" /></View>
-                <Text style={S.navPostLabel}>{tab.label}</Text>
-              </TouchableOpacity>
-            );
-          }
           const isOn = activeTab === tab.id;
           return (
             <TouchableOpacity key={tab.id} style={S.navItem} onPress={() => { setActiveTab(tab.id); if (tab.id === 'home') setSelectedCategory(null); if (tab.id === 'admin') loadPending(); }}>
