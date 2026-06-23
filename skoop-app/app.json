@@ -24,7 +24,12 @@
       "softwareKeyboardLayoutMode": "pan",
       "predictiveBackGestureEnabled": false,
       "package": "com.ndwane.skoopapp",
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyBGemI8N5S96LAb-f4S2a0HGEgW21IbfIQ"
+        }
+      }
     },
     "web": {
       "output": "static",

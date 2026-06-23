@@ -9,14 +9,33 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import * as Location from 'expo-location';
 import Svg, { Line, Circle, Path, Text as SvgText } from 'react-native-svg';
 import { db, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, setDoc, getDoc, onSnapshot, query, where, serverTimestamp } from '../firebase';
 import { router } from 'expo-router';
 import { useAuth } from '../contexts/AuthContext';
+import { BRANDS_DATA } from './brandsData';
 
-const MAX_IMAGES = 5;
+const MAX_IMAGES = 10;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ADMIN_EMAILS = ['ndwanek@gmail.com'];
+
+const CLOUDINARY_CLOUD = 'dybcfhrxi';
+const CLOUDINARY_PRESET = 'scoop_unsigned';
+
+const uploadToCloudinary = async (uri) => {
+  const form = new FormData();
+  form.append('file', { uri, type: 'image/jpeg', name: `scoop_${Date.now()}.jpg` });
+  form.append('upload_preset', CLOUDINARY_PRESET);
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`, {
+    method: 'POST',
+    body: form,
+  });
+  const data = await res.json();
+  if (!data.secure_url) throw new Error('Cloudinary upload failed');
+  return data.secure_url;
+};
 
 const LIGHT = {
   hdrBg: '#26215C', bg: '#F8F6FF', card: '#FFFFFF', cardBorder: '#E8E4FF',
@@ -50,6 +69,40 @@ const CONDITIONS = [
 
 const CONDITION_LABELS = { new: 'جديد', like_new: 'شبه جديد', used: 'مستعمل' };
 
+const BODY_TYPES = ['دفع رباعي', 'سيدان', 'كوبيه', 'هاتشباك', 'بيك أب', 'فان'];
+const CAR_COLORS = ['أبيض', 'أسود', 'فضي', 'رمادي', 'أحمر', 'أزرق', 'أخضر', 'بني', 'ذهبي', 'برتقالي'];
+const CAR_FEATURES = ['فتحة سقف', 'كاميرا خلفية', 'كاميرا 360', 'كراسي جلد', 'كراسي مدفّأة', 'كراسي مبرّدة', 'بلوتوث', 'شاشة', 'حساسات ركن', 'مثبت سرعة', 'تحكم بصمة', 'مفاتيح ذكية'];
+
+const MOTO_BRANDS = [
+  { label: 'هارلي ديفيدسون / Harley-Davidson', value: 'harley', models: ['Sportster','Iron 883','Fat Boy','Street Glide','Road King','Forty-Eight','Breakout'] },
+  { label: 'ياماها / Yamaha', value: 'yamaha-moto', models: ['YZF-R1','YZF-R6','YZF-R7','MT-07','MT-09','MT-10','Tracer','XSR'] },
+  { label: 'هوندا / Honda', value: 'honda-moto', models: ['CBR600RR','CBR1000RR','CB650R','CB500','Africa Twin','Rebel','Gold Wing'] },
+  { label: 'كاواساكي / Kawasaki', value: 'kawasaki', models: ['Ninja 400','Ninja 650','Ninja ZX-6R','Ninja ZX-10R','Z900','Z650','Versys','Vulcan'] },
+  { label: 'سوزوكي / Suzuki', value: 'suzuki-moto', models: ['GSX-R600','GSX-R750','GSX-R1000','Hayabusa','V-Strom','SV650','Katana'] },
+  { label: 'دوكاتي / Ducati', value: 'ducati', models: ['Panigale V2','Panigale V4','Monster','Multistrada','Diavel','Scrambler','Streetfighter'] },
+  { label: 'بي إم دبليو / BMW', value: 'bmw-moto', models: ['S 1000 RR','R 1250 GS','F 900 R','R nineT','G 310 R','F 850 GS'] },
+  { label: 'كي تي إم / KTM', value: 'ktm', models: ['Duke 390','Duke 790','Duke 890','RC 390','1290 Super Duke','Adventure'] },
+  { label: 'تريومف / Triumph', value: 'triumph', models: ['Street Triple','Speed Triple','Bonneville','Tiger','Rocket 3','Trident'] },
+  { label: 'إنديان / Indian', value: 'indian', models: ['Scout','Chief','Chieftain','Springfield','FTR'] },
+  { label: 'رويال إنفيلد / Royal Enfield', value: 'royal-enfield', models: ['Classic 350','Meteor 350','Himalayan','Continental GT','Hunter 350'] },
+  { label: 'أبريليا / Aprilia', value: 'aprilia', models: ['RS 660','Tuono','RSV4'] },
+  { label: 'فيسبا / Vespa', value: 'vespa', models: ['Primavera','GTS','Sprint'] },
+  { label: 'غير ذلك / Other', value: 'moto-other', models: [] },
+];
+
+const BIKE_BRANDS = [
+  { label: 'تريك / Trek', value: 'trek', models: ['Marlin','FX','Domane','Émonda','Fuel EX','Verve','Roscoe'] },
+  { label: 'جاينت / Giant', value: 'giant', models: ['Talon','Escape','Defy','TCR','Trance','Contend','Revolt'] },
+  { label: 'سبيشالايزد / Specialized', value: 'specialized', models: ['Rockhopper','Sirrus','Allez','Tarmac','Stumpjumper','Roubaix'] },
+  { label: 'كانونديل / Cannondale', value: 'cannondale', models: ['Trail','Quick','Synapse','CAAD','Topstone','Scalpel'] },
+  { label: 'سكوت / Scott', value: 'scott', models: ['Aspect','Scale','Spark','Addict','Sub Cross'] },
+  { label: 'ميريدا / Merida', value: 'merida', models: ['Big Nine','Scultura','Reacto','Crossway'] },
+  { label: 'كانيون / Canyon', value: 'canyon', models: ['Grand Canyon','Ultimate','Endurace','Spectral'] },
+  { label: 'جي تي / GT', value: 'gt-bike', models: ['Aggressor','Avalanche','Performer'] },
+  { label: 'بيانكي / Bianchi', value: 'bianchi', models: ['Via Nirone','Sprint','Oltre'] },
+  { label: 'غير ذلك / Other', value: 'bike-other', models: [] },
+];
+
 const PART_TYPES = [
   'إطارات', 'رينقات (جنوط)', 'مساعدات', 'بطارية', 'ردياتير',
   'دينمو', 'مكينة (محرك)', 'قير (ناقل حركة)', 'مكيف / كمبروسر',
@@ -64,6 +117,38 @@ const CITIES = {
   en: ['All','Dubai','Abu Dhabi','Sharjah','Ajman','Ras Al Khaimah','Fujairah','Umm Al Quwain','Al Ain'],
 };
 
+const CITY_COORDS = {
+  'دبي': { lat: 25.2048, lng: 55.2708 }, 'Dubai': { lat: 25.2048, lng: 55.2708 },
+  'أبوظبي': { lat: 24.4539, lng: 54.3773 }, 'Abu Dhabi': { lat: 24.4539, lng: 54.3773 },
+  'الشارقة': { lat: 25.3463, lng: 55.4211 }, 'Sharjah': { lat: 25.3463, lng: 55.4211 },
+  'عجمان': { lat: 25.4052, lng: 55.5136 }, 'Ajman': { lat: 25.4052, lng: 55.5136 },
+  'رأس الخيمة': { lat: 25.7895, lng: 55.9432 }, 'Ras Al Khaimah': { lat: 25.7895, lng: 55.9432 },
+  'الفجيرة': { lat: 25.1288, lng: 56.3265 }, 'Fujairah': { lat: 25.1288, lng: 56.3265 },
+  'أم القيوين': { lat: 25.5333, lng: 55.5553 }, 'Umm Al Quwain': { lat: 25.5333, lng: 55.5553 },
+  'العين': { lat: 24.2075, lng: 55.7447 }, 'Al Ain': { lat: 24.2075, lng: 55.7447 },
+};
+
+const normalizeEmirate = (g) => {
+  const hay = `${g?.region || ''} ${g?.city || ''} ${g?.subregion || ''} ${g?.name || ''}`.toLowerCase();
+  if (hay.includes('al ain') || hay.includes('al-ain') || hay.includes('العين')) return 'العين';
+  if (hay.includes('dubai') || hay.includes('دبي')) return 'دبي';
+  if (hay.includes('abu dhabi') || hay.includes('أبوظبي') || hay.includes('ابوظبي')) return 'أبوظبي';
+  if (hay.includes('sharjah') || hay.includes('الشارقة')) return 'الشارقة';
+  if (hay.includes('ajman') || hay.includes('عجمان')) return 'عجمان';
+  if (hay.includes('ras al khaimah') || hay.includes('رأس الخيمة')) return 'رأس الخيمة';
+  if (hay.includes('fujairah') || hay.includes('الفجيرة')) return 'الفجيرة';
+  if (hay.includes('umm al quwain') || hay.includes('أم القيوين')) return 'أم القيوين';
+  return '';
+};
+
+const VEHICLE_CATS = [
+  { id: 'veh_car', label: 'سيارات', icon: 'car-side', color: '#1E7A46', bg: '#DCFCE7', bgDark: '#0D2E1A' },
+  { id: 'veh_motorcycle', label: 'دراجات نارية', icon: 'motorbike', color: '#BA7517', bg: '#FAEEDA', bgDark: '#2E200D' },
+  { id: 'veh_sportbike', label: 'دراجات رياضية', icon: 'racing-helmet', color: '#993556', bg: '#FBEAF0', bgDark: '#2E0D0D' },
+  { id: 'veh_bicycle', label: 'دراجات هوائية', icon: 'bike', color: '#0F6E56', bg: '#E1F5EE', bgDark: '#0D2E1A' },
+  { id: 'veh_other', label: 'مركبات أخرى', icon: 'truck', color: '#185FA5', bg: '#E6F1FB', bgDark: '#0d1535' },
+];
+
 const CATEGORIES = [
   { id: 'cars', label: 'قطع سيارات', icon: 'car-side', color: '#534AB7', bg: '#EEEDFE', bgDark: '#1E1545' },
   { id: 'motorcycles', label: 'قطع دراجات نارية', icon: 'motorbike', color: '#BA7517', bg: '#FAEEDA', bgDark: '#2E200D' },
@@ -72,40 +157,44 @@ const CATEGORIES = [
   { id: 'rc_cars', label: 'سيارات تحكم RC', icon: 'car-sports', img: require('../assets/cat-icons/rc_cars.png'), color: '#993556', bg: '#FBEAF0', bgDark: '#2E0D0D', isNew: true },
 ];
 
-const BRANDS_DATA = [
-  { label: 'تويوتا / Toyota', value: 'toyota', models: ['Land Cruiser','Prado','Camry','Corolla','Hilux','Yaris','RAV4','Fortuner','Highlander','Avalon','C-HR','Rush','Sequoia','Tundra','4Runner','Venza','Crown'] },
-  { label: 'نيسان / Nissan', value: 'nissan', models: ['Patrol','Altima','Sunny','X-Trail','Murano','Armada','Navara','Juke','Kicks','Maxima','Pathfinder','GT-R','Z','370Z','Sentra','Leaf'] },
-  { label: 'هوندا / Honda', value: 'honda', models: ['Civic','Accord','CR-V','HR-V','Pilot','Odyssey','Jazz','City','Fit','Passport'] },
-  { label: 'مرسيدس / Mercedes', value: 'mercedes', models: ['C200','C300','E200','E300','E350','S400','S500','S580','GLA','GLB','GLC','GLE','GLS','G63','AMG GT','CLA','CLS','EQS','Maybach'] },
-  { label: 'بي ام دبليو / BMW', value: 'bmw', models: ['318i','320i','330i','340i','520i','530i','540i','730i','740i','750i','X1','X3','X4','X5','X6','X7','M3','M5','i4','iX'] },
-  { label: 'لكزس / Lexus', value: 'lexus', models: ['ES250','ES300h','ES350','IS250','IS350','LS460','LS500','GX460','LX570','LX600','RX350','RX450h','NX300','LC500'] },
-  { label: 'كيا / Kia', value: 'kia', models: ['Sorento','Sportage','Optima','Stinger','Cerato','Rio','Carnival','Telluride','EV6','Niro','Soul','Seltos','K5'] },
-  { label: 'هيونداي / Hyundai', value: 'hyundai', models: ['Sonata','Elantra','Tucson','Santa Fe','Creta','Azera','Staria','Palisade','Ioniq 5','Ioniq 6','Kona'] },
-  { label: 'فورد / Ford', value: 'ford', models: ['Explorer','F-150','Mustang','Edge','Expedition','Ranger','Bronco','Escape','Fusion','Maverick'] },
-  { label: 'شيفروليه / Chevrolet', value: 'chevrolet', models: ['Tahoe','Suburban','Traverse','Malibu','Camaro','Caprice','Colorado','Silverado','Blazer','Corvette'] },
-  { label: 'جيب / Jeep', value: 'jeep', models: ['Wrangler','Grand Cherokee','Cherokee','Compass','Gladiator','Wagoneer'] },
-  { label: 'رنج روفر / Range Rover', value: 'range rover', models: ['Vogue','Sport','Evoque','Velar','Defender','Discovery'] },
-  { label: 'بورش / Porsche', value: 'porsche', models: ['Cayenne','911','Panamera','Macan','Taycan','Boxster','Cayman'] },
-  { label: 'اودي / Audi', value: 'audi', models: ['A3','A4','A5','A6','A7','A8','Q3','Q5','Q7','Q8','RS3','RS6','RS7','e-tron'] },
-  { label: 'ميتسوبيشي / Mitsubishi', value: 'mitsubishi', models: ['Pajero','L200','Outlander','Eclipse Cross','Lancer','ASX'] },
-  { label: 'انفينيتي / Infiniti', value: 'infiniti', models: ['QX80','QX60','QX55','QX50','Q50','Q60'] },
-  { label: 'مازدا / Mazda', value: 'mazda', models: ['CX-3','CX-5','CX-8','CX-9','CX-90','Mazda 3','Mazda 6','MX-5'] },
-  { label: 'فولكس / Volkswagen', value: 'volkswagen', models: ['Passat','Golf','Tiguan','Touareg','Polo','Jetta','Teramont'] },
-  { label: 'جي ام سي / GMC', value: 'gmc', models: ['Yukon','Yukon XL','Sierra','Terrain','Canyon','Acadia'] },
-  { label: 'دودج / Dodge', value: 'dodge', models: ['Challenger','Charger','Durango','Ram 1500','Ram 2500'] },
-  { label: 'تسلا / Tesla', value: 'tesla', models: ['Model 3','Model S','Model X','Model Y','Cybertruck'] },
-  { label: 'لامبورغيني / Lamborghini', value: 'lamborghini', models: ['Urus','Huracan','Aventador','Revuelto'] },
-  { label: 'فيراري / Ferrari', value: 'ferrari', models: ['Roma','Portofino','F8','SF90','812','Purosangue'] },
-  { label: 'بنتلي / Bentley', value: 'bentley', models: ['Bentayga','Continental GT','Flying Spur','Mulsanne'] },
-  { label: 'رولز رويس / Rolls Royce', value: 'rolls royce', models: ['Ghost','Phantom','Wraith','Dawn','Cullinan'] },
-  { label: 'BYD', value: 'byd', models: ['Atto 3','Han','Tang','Song','Dolphin','Seal'] },
-  { label: 'هافال / Haval', value: 'haval', models: ['H6','H9','Jolion','Big Dog','Dargo'] },
-  { label: 'MG', value: 'mg', models: ['MG5','MG6','ZS','HS','RX5','Cyberster'] },
-  { label: 'سوزوكي / Suzuki', value: 'suzuki', models: ['Vitara','Swift','Jimny','Ignis','Baleno','Ertiga'] },
-  { label: 'كاديلاك / Cadillac', value: 'cadillac', models: ['Escalade','CT5','CT6','XT4','XT5','XT6'] },
-  { label: 'هامر / Hummer', value: 'hummer', models: ['H1','H2','H3','EV'] },
-  { label: 'جينيسيس / Genesis', value: 'genesis', models: ['G70','G80','G90','GV70','GV80'] },
-];
+const TERMS_TEXT = `الشروط والأحكام — منصة سكوب (Scoop)
+آخر تحديث: ٢٠٢٦
+
+باستخدامك تطبيق سكوب وإنشاء حساب أو نشر إعلان، فإنك تقرّ بموافقتك على الشروط التالية:
+
+١) الأهلية
+يجب أن يكون عمرك ١٨ سنة فأكثر، وأن تكون المعلومات التي تقدّمها صحيحة وحديثة.
+
+٢) الحساب
+أنت مسؤول عن سرية بيانات دخولك وعن كل نشاط يتم عبر حسابك.
+
+٣) الإعلانات
+- تتعهّد بأن تكون معلومات إعلانك صحيحة وأنك مالك السلعة أو مخوّل ببيعها.
+- يُمنع نشر أي محتوى مخالف للقانون، أو مضلّل، أو ينتهك حقوق الغير.
+- تخضع جميع الإعلانات لمراجعة الإدارة، ولها الحق في قبول أو رفض أو حذف أي إعلان دون إبداء الأسباب.
+
+٤) الموافقة على إعادة النشر (مهم)
+بنشرك أي إعلان على سكوب، فإنك تمنح سكوب حقًّا غير حصري ومجانيًا في إعادة نشر إعلانك ومحتواه (الصور والوصف والتفاصيل) على قنوات سكوب الرسمية وحساباتها على وسائل التواصل الاجتماعي (مثل إنستغرام وفيسبوك وغيرها) والمنصات التابعة لها، وذلك لأغراض العرض والترويج والتسويق، دون مقابل مادي ودون الحاجة لموافقة إضافية منك.
+
+٥) ملكية المحتوى
+تبقى ملكية المحتوى الذي تنشره لك، مع منح سكوب الترخيص الموضّح في البند (٤).
+
+٦) دور المنصة وإخلاء المسؤولية
+سكوب منصّة وسيطة تتيح التواصل بين البائع والمشتري فقط، وليست طرفًا في أي صفقة. لا تضمن سكوب جودة السلع أو صحة المعلومات أو إتمام الصفقات، ولا تتحمّل أي مسؤولية عن أي نزاع أو ضرر ينشأ بين المستخدمين.
+
+٧) إيقاف الحسابات
+يحق لسكوب تعليق أو إيقاف أي حساب يخالف هذه الشروط.
+
+٨) الخصوصية
+يتم جمع بياناتك واستخدامها وفق سياسة الخصوصية الخاصة بالمنصة.
+
+٩) تعديل الشروط
+يحق لسكوب تعديل هذه الشروط في أي وقت، ويُعدّ استمرارك في استخدام التطبيق موافقةً على التعديلات.
+
+١٠) القانون المطبّق
+تخضع هذه الشروط لأنظمة دولة الإمارات العربية المتحدة.
+
+للتواصل: [بريد الدعم]`;
 
 const LogoWhite = ({ width = 140, height = 34 }) => (
   <Svg width={width} height={height} viewBox="0 0 420 100">
@@ -194,6 +283,7 @@ export default function Index() {
 
   const [activeTab, setActiveTab] = useState('home');
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
 
   const [myProfile, setMyProfile] = useState(null);
   const [showEditProfile, setShowEditProfile] = useState(false);
@@ -236,6 +326,18 @@ export default function Index() {
   const [search, setSearch] = useState('');
   const [filterCity, setFilterCity] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const [visibleCount, setVisibleCount] = useState(20);
+  const [showAdvSearch, setShowAdvSearch] = useState(false);
+  const [searchResultsMode, setSearchResultsMode] = useState(false);
+  const [advType, setAdvType] = useState('all');
+  const [advPriceMin, setAdvPriceMin] = useState('');
+  const [advPriceMax, setAdvPriceMax] = useState('');
+  const [advYearMin, setAdvYearMin] = useState('');
+  const [advYearMax, setAdvYearMax] = useState('');
+  const [advCondition, setAdvCondition] = useState('');
+  const [advCity, setAdvCity] = useState('');
+  const [advSort, setAdvSort] = useState('newest');
+  const resetAdvFilters = () => { setAdvType('all'); setAdvPriceMin(''); setAdvPriceMax(''); setAdvYearMin(''); setAdvYearMax(''); setAdvCondition(''); setAdvCity(''); setAdvSort('newest'); };
 
   const [selectedPart, setSelectedPart] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
@@ -251,19 +353,43 @@ export default function Index() {
   const [price, setPrice] = useState('');
   const [postCity, setPostCity] = useState('دبي');
   const [phone, setPhone] = useState('');
+  const [pickedLat, setPickedLat] = useState(null);
+  const [pickedLng, setPickedLng] = useState(null);
+  const [showMapPicker, setShowMapPicker] = useState(false);
+  const [pickedArea, setPickedArea] = useState('');
+  const [gettingLocation, setGettingLocation] = useState(false);
   const [notes, setNotes] = useState('');
   const [images, setImages] = useState([]);
   const [pickingImage, setPickingImage] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const [listingType, setListingType] = useState('part');
+  const [vehicleType, setVehicleType] = useState('car');
+  const [vehKm, setVehKm] = useState('');
+  const [vehTransmission, setVehTransmission] = useState('auto');
+  const [vehFuel, setVehFuel] = useState('petrol');
+  const [vehEngineCc, setVehEngineCc] = useState('');
+  const [vehSpec, setVehSpec] = useState('gulf');
+  const [vehBody, setVehBody] = useState('');
+  const [vehCylinders, setVehCylinders] = useState('');
+  const [vehColor, setVehColor] = useState('');
+  const [vehFeatures, setVehFeatures] = useState([]);
+  const [customFeature, setCustomFeature] = useState('');
+
   const [partTypeOpen, setPartTypeOpen] = useState(false);
   const [brandOpen, setBrandOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [brandQuery, setBrandQuery] = useState('');
+  const [modelQuery, setModelQuery] = useState('');
   const [partQuery, setPartQuery] = useState('');
 
-  const filteredBrands = brandQuery ? BRANDS_DATA.filter(b => b.label.toLowerCase().includes(brandQuery.toLowerCase())) : BRANDS_DATA;
-  const models = selectedBrand ? (BRANDS_DATA.find(b => b.value === selectedBrand.value)?.models || []) : [];
+  const vehicleBrandList = (vehicleType === 'motorcycle' || vehicleType === 'sportbike') ? MOTO_BRANDS
+    : vehicleType === 'bicycle' ? BIKE_BRANDS
+    : BRANDS_DATA;
+  const activeBrands = listingType === 'vehicle' ? vehicleBrandList : BRANDS_DATA;
+  const filteredBrands = brandQuery ? activeBrands.filter(b => b.label.toLowerCase().includes(brandQuery.toLowerCase())) : activeBrands;
+  const models = selectedBrand ? (activeBrands.find(b => b.value === selectedBrand.value)?.models || []) : [];
+  const filteredModels = modelQuery ? models.filter(m => m.toLowerCase().includes(modelQuery.toLowerCase())) : models;
   const filteredPartTypes = partQuery ? PART_TYPES.filter(p => p.includes(partQuery)) : PART_TYPES;
 
   useEffect(() => { loadParts(); }, []);
@@ -384,12 +510,23 @@ export default function Index() {
     setPartType(''); setCustomPartType(''); setSelectedBrand(null); setSelectedModel(null);
     setCarYear(''); setCondition('used'); setPrice(''); setPostCity('دبي');
     setPhone(myProfile?.phone || ''); setNotes(''); setImages([]);
+    setPickedLat(null); setPickedLng(null); setPickedArea('');
     setPostCity(myProfile?.city || 'دبي');
-    setPostCategory(selectedCategory || 'cars');
+    setPostCategory(selectedCategory && selectedCategory.startsWith('veh_') ? 'cars' : (selectedCategory || 'cars'));
     setPartTypeOpen(false); setBrandOpen(false); setModelOpen(false);
     setBrandQuery(''); setPartQuery('');
+    setVehicleType(selectedCategory && selectedCategory.startsWith('veh_') ? selectedCategory.slice(4) : 'car'); setVehKm(''); setVehTransmission('auto'); setVehFuel('petrol'); setVehEngineCc('');
+    setVehSpec('gulf'); setVehBody(''); setVehCylinders(''); setVehColor(''); setVehFeatures([]); setCustomFeature('');
+    setListingType((selectedCategory === 'vehicles' || (selectedCategory && selectedCategory.startsWith('veh_'))) ? 'vehicle' : 'part');
   };
 
+  const openMapPicker = () => {
+    if (pickedLat === null) {
+      const c = CITY_COORDS[postCity] || { lat: 24.4539, lng: 54.3773 };
+      setPickedLat(c.lat); setPickedLng(c.lng);
+    }
+    setShowMapPicker(true);
+  };
   const pickImage = async () => {
     if (images.length >= MAX_IMAGES) { Alert.alert('', `الحد الأقصى ${MAX_IMAGES} صور`); return; }
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -401,39 +538,88 @@ export default function Index() {
         quality: 0.7, allowsMultipleSelection: true, selectionLimit: MAX_IMAGES - images.length,
       });
       if (!result.canceled && result.assets) {
-        const compressed = [];
+        const uploaded = [];
         for (const asset of result.assets) {
-          const manip = await ImageManipulator.manipulateAsync(asset.uri, [{ resize: { width: 800 } }], { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG, base64: true });
-          if (manip.base64) compressed.push('data:image/jpeg;base64,' + manip.base64);
+          const manip = await ImageManipulator.manipulateAsync(asset.uri, [{ resize: { width: 1000 } }], { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG });
+          const url = await uploadToCloudinary(manip.uri);
+          uploaded.push(url);
         }
-        setImages(prev => [...prev, ...compressed].slice(0, MAX_IMAGES));
+        setImages(prev => [...prev, ...uploaded].slice(0, MAX_IMAGES));
       }
-    } catch (e) { Alert.alert('', 'تعذّر اختيار الصورة'); }
+    } catch (e) { Alert.alert('', 'تعذّر رفع الصورة، تأكد من اتصال الإنترنت'); }
     setPickingImage(false);
   };
 
   const removeImage = (idx) => { setImages(prev => prev.filter((_, i) => i !== idx)); };
+  const setCoverImage = (idx) => { setImages(prev => { if (idx <= 0) return prev; const copy = [...prev]; const [pick] = copy.splice(idx, 1); return [pick, ...copy]; }); };
 
   const submitPart = async () => {
+    const isVehicle = listingType === 'vehicle';
     const finalPartType = partType === 'غير ذلك' ? customPartType.trim() : partType;
-    if (!finalPartType || !selectedBrand || !price.trim() || !phone.trim()) {
+
+    if (isVehicle) {
+      if (!selectedBrand || !price.trim() || !phone.trim()) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert('', 'الرجاء تعبئة: الشركة، السعر، ورقم الجوال'); return;
+      }
+      if (!carYear.trim()) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert('', 'الرجاء تعبئة سنة الصنع'); return;
+      }
+      if (vehicleType !== 'bicycle' && !vehKm.trim()) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert('', 'الرجاء تعبئة الممشى (الكيلومترات)'); return;
+      }
+    } else {
+      if (!finalPartType || !selectedBrand || !price.trim() || !phone.trim()) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert('', 'الرجاء تعبئة: نوع القطعة، الشركة، السعر، ورقم الجوال'); return;
+      }
+    }
+    if (pickedLat === null) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('', 'الرجاء تعبئة: نوع القطعة، الشركة، السعر، ورقم الجوال'); return;
+      Alert.alert('', 'حدد الموقع على الخريطة'); return;
     }
     if (images.length === 0) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('', 'أضف صورة واحدة على الأقل للقطعة'); return;
+      Alert.alert('', 'أضف صورة واحدة على الأقل'); return;
     }
+
+    const brandAr = selectedBrand.label.split('/')[0].trim();
+    const vehicleTitle = `${brandAr} ${selectedModel || ''} ${carYear || ''}`.trim();
+
+    const payload = isVehicle ? {
+      listingType: 'vehicle', vehicleType,
+      partName: vehicleTitle, brand: selectedBrand.value, brandLabel: selectedBrand.label,
+      model: selectedModel || null, carYear: carYear.trim() || null,
+      carBrand: vehicleTitle,
+      km: vehKm.trim() || null,
+      transmission: vehicleType === 'car' ? vehTransmission : null,
+      fuel: vehicleType === 'car' ? vehFuel : null,
+      engineCc: (vehicleType === 'motorcycle' || vehicleType === 'sportbike') ? (vehEngineCc.trim() || null) : null,
+      spec: vehicleType === 'car' ? vehSpec : null,
+      bodyType: vehicleType === 'car' ? (vehBody || null) : null,
+      cylinders: vehicleType === 'car' ? (vehCylinders || null) : null,
+      exteriorColor: vehColor || null,
+      features: vehicleType === 'car' ? vehFeatures : [],
+      condition, price: parseInt(price) || 0, city: postCity, phone: phone.trim(),
+      notes: notes.trim(), images, category: 'vehicles',
+      lat: pickedLat, lng: pickedLng, area: pickedArea.trim() || null,
+    } : {
+      listingType: 'part',
+      partName: finalPartType, brand: selectedBrand.value, brandLabel: selectedBrand.label,
+      model: selectedModel || null, carYear: carYear.trim() || null,
+      carBrand: vehicleTitle,
+      condition, price: parseInt(price) || 0, city: postCity, phone: phone.trim(),
+      notes: notes.trim(), images, category: postCategory || 'cars',
+      lat: pickedLat, lng: pickedLng, area: pickedArea.trim() || null,
+    };
+
     setSaving(true);
     try {
       if (editingPartId) {
         await updateDoc(doc(db, 'parts', editingPartId), {
-          partName: finalPartType, brand: selectedBrand.value, brandLabel: selectedBrand.label,
-          model: selectedModel || null, carYear: carYear.trim() || null,
-          carBrand: `${selectedBrand.label.split('/')[0].trim()} ${selectedModel || ''} ${carYear || ''}`.trim(),
-          condition, price: parseInt(price) || 0, city: postCity, phone: phone.trim(),
-          notes: notes.trim(), images, category: postCategory || 'cars',
-          status: 'pending', adminNote: '', wasApproved: true,
+          ...payload, status: 'pending', adminNote: '', wasApproved: true,
         });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setSaving(false);
@@ -441,17 +627,13 @@ export default function Index() {
         return;
       }
       await addDoc(collection(db, 'parts'), {
-        partName: finalPartType, brand: selectedBrand.value, brandLabel: selectedBrand.label,
-        model: selectedModel || null, carYear: carYear.trim() || null,
-        carBrand: `${selectedBrand.label.split('/')[0].trim()} ${selectedModel || ''} ${carYear || ''}`.trim(),
-        condition, price: parseInt(price) || 0, city: postCity, phone: phone.trim(),
-        notes: notes.trim(), images, category: postCategory || 'cars', status: 'pending',
+        ...payload, status: 'pending',
         userId: user?.uid || null,
         userName: user?.displayName || user?.email?.split('@')[0] || 'مستخدم',
         createdAt: new Date().toISOString(),
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('تم ✅', 'تم إرسال قطعتك! ستظهر بعد موافقة الإدارة.', [{ text: 'تمام', onPress: () => { setShowPost(false); resetPostForm(); } }]);
+      Alert.alert('تم ✅', isVehicle ? 'تم إرسال إعلان المركبة! سيظهر بعد موافقة الإدارة.' : 'تم إرسال قطعتك! ستظهر بعد موافقة الإدارة.', [{ text: 'تمام', onPress: () => { setShowPost(false); resetPostForm(); } }]);
     } catch (e) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('خطأ', 'لم يتم الإرسال، حاول مرة أخرى');
@@ -545,9 +727,9 @@ export default function Index() {
         ? await ImagePicker.launchCameraAsync({ quality: 0.7 })
         : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
       if (result.canceled || !result.assets?.[0]) return;
-      const manip = await ImageManipulator.manipulateAsync(result.assets[0].uri, [{ resize: { width: 800 } }], { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG, base64: true });
-      if (!manip.base64 || !activeChat) return;
-      const img = 'data:image/jpeg;base64,' + manip.base64;
+      if (!activeChat) return;
+      const manip = await ImageManipulator.manipulateAsync(result.assets[0].uri, [{ resize: { width: 1000 } }], { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG });
+      const img = await uploadToCloudinary(manip.uri);
       await addDoc(collection(db, 'chats', activeChat.id, 'messages'), {
         image: img, senderId: user.uid, createdAt: new Date().toISOString(),
       });
@@ -641,9 +823,21 @@ export default function Index() {
 
   const editMyPart = (part) => {
     setEditingPartId(part.id);
+    const lt = part.listingType || 'part';
+    setListingType(lt);
+    setVehicleType(part.vehicleType || 'car');
+    setVehKm(part.km || '');
+    setVehTransmission(part.transmission || 'auto');
+    setVehFuel(part.fuel || 'petrol');
+    setVehEngineCc(part.engineCc || '');
+    setVehSpec(part.spec || 'gulf');
+    setVehBody(part.bodyType || '');
+    setVehCylinders(part.cylinders || '');
+    setVehColor(part.exteriorColor || '');
+    setVehFeatures(Array.isArray(part.features) ? part.features : []);
     setPostCategory(part.category || 'cars');
-    setPartType(part.partName || '');
-    setSelectedBrand(BRANDS_DATA.find(b => b.value === part.brand) || null);
+    setPartType(lt === 'vehicle' ? '' : (part.partName || ''));
+    setSelectedBrand([...BRANDS_DATA, ...MOTO_BRANDS, ...BIKE_BRANDS].find(b => b.value === part.brand) || null);
     setSelectedModel(part.model || null);
     setCarYear(part.carYear || '');
     setCondition(part.condition || 'used');
@@ -652,6 +846,7 @@ export default function Index() {
     setPhone(part.phone || '');
     setNotes(part.notes || '');
     setImages(part.images || []);
+    setPickedLat(part.lat ?? null); setPickedLng(part.lng ?? null); setPickedArea(part.area || '');
     setShowPost(true);
   };
 
@@ -679,7 +874,11 @@ export default function Index() {
   };
 
   const visibleParts = parts.filter(p => {
-    if (selectedCategory && (p.category || 'cars') !== selectedCategory) return false;
+    if (selectedCategory) {
+      if (selectedCategory.startsWith('veh_')) {
+        if (p.category !== 'vehicles' || (p.vehicleType || 'car') !== selectedCategory.slice(4)) return false;
+      } else if ((p.category || 'cars') !== selectedCategory) return false;
+    }
     if (p.sold) return false;
     if (p.status === 'returned' || p.status === 'pending') return false;
     if (filterCity && p.city !== filterCity) return false;
@@ -689,6 +888,34 @@ export default function Index() {
     }
     return true;
   });
+
+  const advFilteredParts = (() => {
+    let list = parts.filter(p => {
+      if (p.status !== undefined && p.status !== 'approved') return false;
+      if (p.sold) return false;
+      if (advType === 'vehicle' && p.category !== 'vehicles') return false;
+      if (advType === 'part' && p.category === 'vehicles') return false;
+      if (advCondition && p.condition !== advCondition) return false;
+      if (advCity && p.city !== advCity) return false;
+      const price = p.price || 0;
+      if (advPriceMin && price < parseInt(advPriceMin)) return false;
+      if (advPriceMax && price > parseInt(advPriceMax)) return false;
+      const yr = parseInt(p.carYear) || 0;
+      if (advYearMin && yr < parseInt(advYearMin)) return false;
+      if (advYearMax && yr > parseInt(advYearMax)) return false;
+      if (search.trim()) {
+        const txt = `${p.partName || ''} ${p.carBrand || ''} ${p.brandLabel || ''} ${p.model || ''}`.toLowerCase();
+        if (!txt.includes(search.toLowerCase())) return false;
+      }
+      return true;
+    });
+    if (advSort === 'price_asc') list.sort((a, b) => (a.price || 0) - (b.price || 0));
+    else if (advSort === 'price_desc') list.sort((a, b) => (b.price || 0) - (a.price || 0));
+    else list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    return list;
+  })();
+
+  useEffect(() => { setVisibleCount(20); }, [selectedCategory, filterCity, search, searchResultsMode, advType, advPriceMin, advPriceMax, advYearMin, advYearMax, advCondition, advCity, advSort]);
 
   const NAV_HEIGHT = 56 + insets.bottom;
   const CARD_W = (SCREEN_WIDTH - 16 * 2 - 10) / 2;
@@ -701,11 +928,15 @@ export default function Index() {
     headerActions: { flexDirection: 'row', gap: 8, alignItems: 'center' },
     searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
     searchInput: { flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.25)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: '#fff', fontSize: 13, textAlign: 'right' },
+    advBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.3)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 9 },
+    advBtnText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+    advField: { flex: 1, backgroundColor: CT.bg, color: CT.textPrimary, padding: 11, borderRadius: 10, fontSize: 13, borderWidth: 1, borderColor: CT.cardBorder, textAlign: 'center' },
     cityBar: { paddingHorizontal: 12, paddingVertical: 10, backgroundColor: CT.card, borderBottomWidth: 0.5, borderBottomColor: CT.cardBorder },
     soldOverlay: { position: 'absolute', top: 0, left: 0, right: 0, height: CARD_W * 0.7, backgroundColor: 'rgba(20,15,40,0.45)', justifyContent: 'center', alignItems: 'center', zIndex: 5, borderRadius: 10 },
     soldStamp: { borderWidth: 3, borderColor: '#E11D2A', backgroundColor: 'rgba(225,29,42,0.15)', paddingHorizontal: 18, paddingVertical: 7, borderRadius: 8, transform: [{ rotate: '-8deg' }] },
     soldStampText: { color: '#E11D2A', fontSize: 14, fontWeight: '900', textAlign: 'center' },
     catGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12 },
+    catSectionTitle: { fontSize: 18, fontWeight: '800', color: CT.textPrimary, marginBottom: 12, textAlign: 'right' },
     catCard: { width: '47.5%', backgroundColor: CT.card, borderRadius: 16, borderWidth: 0.5, borderColor: CT.cardBorder, paddingVertical: 22, paddingHorizontal: 10, alignItems: 'center', position: 'relative' },
     catIconBox: { width: 58, height: 58, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
     catLabel: { fontSize: 13, fontWeight: '600', color: CT.textPrimary, marginTop: 10, textAlign: 'center' },
@@ -891,38 +1122,45 @@ export default function Index() {
       <Text style={S.cardPrice}>{item.price > 0 ? `${item.price.toLocaleString()} د.إ` : '—'}</Text>
       {item.userName ? <Text style={S.cardSeller}>👤 {item.userName}</Text> : null}
       <View style={S.cardTags}>
-        {item.city ? <View style={S.miniTag}><Text style={S.miniTagText}>📍 {item.city}</Text></View> : null}
+        {item.city ? <View style={S.miniTag}><Text style={S.miniTagText}>📍 {item.city}{item.area ? ' : ' + item.area : ''}</Text></View> : null}
         {item.condition ? <View style={S.miniTag}><Text style={S.miniTagText}>{CONDITION_LABELS[item.condition] || item.condition}</Text></View> : null}
       </View>
     </TouchableOpacity>
   );
 
+  const renderCatCard = (cat, idx, total) => {
+    const fullWidth = idx === total - 1 && total % 2 === 1;
+    return (
+      <TouchableOpacity key={cat.id} style={[S.catCard, fullWidth && { width: '100%' }]} activeOpacity={0.7} onPress={() => { setSelectedCategory(cat.id); setFilterCity(''); setSearch(''); }}>
+        {cat.isNew && (<View style={S.catNewBadge}><Text style={S.catNewText}>جديد</Text></View>)}
+        <View style={[S.catIconBox, { backgroundColor: isDark ? cat.bgDark : cat.bg }]}>
+          {cat.img ? (
+            <Image source={cat.img} style={{ width: 34, height: 34, resizeMode: 'contain' }} />
+          ) : (
+            <MaterialCommunityIcons name={cat.icon} size={34} color={cat.color} />
+          )}
+        </View>
+        <Text style={S.catLabel}>{cat.label}</Text>
+      </TouchableOpacity>
+    );
+  };
+
   const renderCategories = () => (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: NAV_HEIGHT + 90 }} showsVerticalScrollIndicator={false}>
+      <Text style={S.catSectionTitle}>المركبات</Text>
       <View style={S.catGrid}>
-        {CATEGORIES.map((cat, idx) => {
-          const fullWidth = idx === CATEGORIES.length - 1 && CATEGORIES.length % 2 === 1;
-          return (
-            <TouchableOpacity key={cat.id} style={[S.catCard, fullWidth && { width: '100%' }]} activeOpacity={0.7} onPress={() => { setSelectedCategory(cat.id); setFilterCity(''); setSearch(''); }}>
-              {cat.isNew && (<View style={S.catNewBadge}><Text style={S.catNewText}>جديد</Text></View>)}
-              <View style={[S.catIconBox, { backgroundColor: isDark ? cat.bgDark : cat.bg }]}>
-                {cat.img ? (
-                  <Image source={cat.img} style={{ width: 34, height: 34, resizeMode: 'contain' }} />
-                ) : (
-                  <MaterialCommunityIcons name={cat.icon} size={34} color={cat.color} />
-                )}
-              </View>
-              <Text style={S.catLabel}>{cat.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
+        {VEHICLE_CATS.map((cat, idx) => renderCatCard(cat, idx, VEHICLE_CATS.length))}
       </View>
-      
+
+      <Text style={[S.catSectionTitle, { marginTop: 22 }]}>قطع غيار</Text>
+      <View style={S.catGrid}>
+        {CATEGORIES.map((cat, idx) => renderCatCard(cat, idx, CATEGORIES.length))}
+      </View>
     </ScrollView>
   );
 
   const renderCategoryParts = () => {
-    const cat = CATEGORIES.find(c => c.id === selectedCategory);
+    const cat = [...VEHICLE_CATS, ...CATEGORIES].find(c => c.id === selectedCategory);
     return (
       <View style={{ flex: 1 }}>
         <View style={S.catHeader}>
@@ -948,15 +1186,18 @@ export default function Index() {
         ) : visibleParts.length === 0 ? (
           <View style={S.emptyState}>
             <PulsingIcon name="cube-outline" size={56} color={CT.navy} />
-            <Text style={S.emptyTitle}>لا توجد قطع في هذا القسم بعد</Text>
-            <Text style={S.emptySub}>كن أول من ينشر هنا! اضغط زر "أضف قطعة".</Text>
+            <Text style={S.emptyTitle}>لا توجد إعلانات في هذا القسم بعد</Text>
+            <Text style={S.emptySub}>كن أول من ينشر هنا! اضغط زر الإضافة.</Text>
           </View>
         ) : (
           <FlatList
-            data={visibleParts} keyExtractor={item => item.id} numColumns={2}
+            data={visibleParts.slice(0, visibleCount)} keyExtractor={item => item.id} numColumns={2}
             columnWrapperStyle={{ justifyContent: 'space-between', paddingHorizontal: 16 }}
             contentContainerStyle={{ paddingBottom: NAV_HEIGHT + 90, paddingTop: 12 }}
             renderItem={renderCard}
+            onEndReached={() => setVisibleCount(c => (c < visibleParts.length ? c + 20 : c))}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={visibleCount < visibleParts.length ? <ActivityIndicator color={CT.navy} style={{ marginVertical: 16 }} /> : null}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadParts(); }} colors={[CT.navy]} tintColor={CT.navy} />}
           />
         )}
@@ -965,8 +1206,41 @@ export default function Index() {
     );
   };
 
+  const renderSearchResults = () => (
+    <View style={{ flex: 1 }}>
+      <View style={S.catHeader}>
+        <TouchableOpacity style={S.catBackBtn} onPress={() => { setSearchResultsMode(false); setSearch(''); resetAdvFilters(); }}>
+          <Ionicons name="arrow-forward" size={20} color={CT.textPrimary} />
+        </TouchableOpacity>
+        <Text style={S.catHeaderTitle}>نتائج البحث ({advFilteredParts.length})</Text>
+      </View>
+      {loading ? (
+        <ActivityIndicator size="large" color={CT.navy} style={{ marginTop: 60 }} />
+      ) : advFilteredParts.length === 0 ? (
+        <View style={S.emptyState}>
+          <PulsingIcon name="search-outline" size={56} color={CT.navy} />
+          <Text style={S.emptyTitle}>لا نتائج مطابقة</Text>
+          <Text style={S.emptySub}>جرّب تغيير كلمة البحث أو الفلاتر.</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={advFilteredParts.slice(0, visibleCount)} keyExtractor={item => item.id} numColumns={2}
+          columnWrapperStyle={{ justifyContent: 'space-between', paddingHorizontal: 16 }}
+          contentContainerStyle={{ paddingBottom: NAV_HEIGHT + 90, paddingTop: 12 }}
+          renderItem={renderCard}
+          onEndReached={() => setVisibleCount(c => (c < advFilteredParts.length ? c + 20 : c))}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={visibleCount < advFilteredParts.length ? <ActivityIndicator color={CT.navy} style={{ marginVertical: 16 }} /> : null}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadParts(); }} colors={[CT.navy]} tintColor={CT.navy} />}
+        />
+      )}
+    </View>
+  );
+
   const renderHome = () => (
-    selectedCategory ? renderCategoryParts() : renderCategories()
+    selectedCategory ? renderCategoryParts()
+      : (searchResultsMode || search.trim()) ? renderSearchResults()
+      : renderCategories()
   );
 
   const renderPanel = () => {
@@ -1176,7 +1450,14 @@ export default function Index() {
           renderItem={({ item }) => (
             <View style={S.adminCard}>
               {item.images && item.images.length > 0 && (
-                <Image source={{ uri: item.images[0] }} style={S.adminCardImg} resizeMode="cover" />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                  {item.images.map((img, i) => (
+                    <Image key={i} source={{ uri: img }} style={[S.adminCardImg, { width: 240, marginLeft: 6 }]} resizeMode="cover" />
+                  ))}
+                </ScrollView>
+              )}
+              {item.images && item.images.length > 1 && (
+                <Text style={[S.adminCardInfo, { textAlign: 'center', marginBottom: 4 }]}>📷 {item.images.length} صور</Text>
               )}
               <Text style={S.adminCardName}>{item.partName}</Text>
               {item.returnHistory && item.returnHistory.length > 0 && (
@@ -1251,6 +1532,13 @@ export default function Index() {
           </TouchableOpacity>
         )}
       </View>
+      <Text style={S.settingsSecLabel}>{lang === 'ar' ? 'قانوني' : 'Legal'}</Text>
+      <View style={S.settingsCard}>
+        <TouchableOpacity style={S.settingsRow} onPress={() => setShowTerms(true)}>
+          <Text style={S.settingsRowText}>{lang === 'ar' ? 'الشروط والأحكام' : 'Terms & Conditions'}</Text>
+          <Ionicons name="chevron-forward" size={16} color={CT.textMuted} />
+        </TouchableOpacity>
+      </View>
       <Text style={S.versionText}>Scoop Parts · v1.0</Text>
       <View style={{ height: NAV_HEIGHT + 20 }} />
     </ScrollView>
@@ -1275,8 +1563,12 @@ export default function Index() {
         </View>
         {activeTab === 'home' && (
           <View style={S.searchRow}>
+            <TouchableOpacity style={S.advBtn} onPress={() => setShowAdvSearch(true)}>
+              <Ionicons name="options-outline" size={16} color="#fff" />
+              <Text style={S.advBtnText}>بحث متقدم</Text>
+            </TouchableOpacity>
             <Ionicons name="search" size={18} color="rgba(255,255,255,0.6)" />
-            <TextInput style={S.searchInput} placeholder="ابحث عن قطعة... مثال: مساعد باترول" placeholderTextColor="rgba(255,255,255,0.4)" value={search} onChangeText={setSearch} />
+            <TextInput style={S.searchInput} placeholder="ابحث... مثال: باترول" placeholderTextColor="rgba(255,255,255,0.4)" value={search} onChangeText={setSearch} />
           </View>
         )}
       </View>
@@ -1395,7 +1687,7 @@ export default function Index() {
               {sellerParts.map(item => (
                 <TouchableOpacity key={item.id} style={S.adminCard} onPress={() => { setSelectedPart(item); setShowSeller(false); setShowDetails(true); }}>
                   {item.images && item.images.length > 0 && (
-                    <Image source={{ uri: item.images[0] }} style={S.adminCardImg} resizeMode="cover" />
+                    <Image source={{ uri: item.images[0] }} style={[S.adminCardImg, { width: 240 }]} resizeMode="cover" />
                   )}
                   <Text style={S.adminCardName}>{item.partName}</Text>
                   <Text style={S.adminCardInfo}>🚗 {item.carBrand || item.brandLabel || ''}</Text>
@@ -1429,10 +1721,31 @@ export default function Index() {
                 <Text style={S.detailPrice}>{selectedPart.price > 0 ? `${selectedPart.price.toLocaleString()} د.إ` : '—'}</Text>
                 <View style={S.detailRow}>
                   {selectedPart.carBrand ? <View style={S.detailTag}><Text style={S.detailTagText}>🚗 {selectedPart.carBrand}</Text></View> : null}
-                  {selectedPart.city ? <View style={S.detailTag}><Text style={S.detailTagText}>📍 {selectedPart.city}</Text></View> : null}
+                  {selectedPart.km ? <View style={S.detailTag}><Text style={S.detailTagText}>🛣️ {Number(selectedPart.km).toLocaleString()} كم</Text></View> : null}
+                  {selectedPart.transmission ? <View style={S.detailTag}><Text style={S.detailTagText}>⚙️ {selectedPart.transmission === 'auto' ? 'أوتوماتيك' : 'عادي'}</Text></View> : null}
+                  {selectedPart.fuel ? <View style={S.detailTag}><Text style={S.detailTagText}>⛽ {({ petrol: 'بنزين', diesel: 'ديزل', hybrid: 'هايبرد', electric: 'كهرباء' })[selectedPart.fuel] || selectedPart.fuel}</Text></View> : null}
+                  {selectedPart.engineCc ? <View style={S.detailTag}><Text style={S.detailTagText}>🏍️ {selectedPart.engineCc} CC</Text></View> : null}
+                  {selectedPart.spec ? <View style={S.detailTag}><Text style={S.detailTagText}>{selectedPart.spec === 'gulf' ? 'خليجي' : 'وارد'}</Text></View> : null}
+                  {selectedPart.bodyType ? <View style={S.detailTag}><Text style={S.detailTagText}>{selectedPart.bodyType}</Text></View> : null}
+                  {selectedPart.cylinders ? <View style={S.detailTag}><Text style={S.detailTagText}>{selectedPart.cylinders} سلندر</Text></View> : null}
+                  {selectedPart.exteriorColor ? <View style={S.detailTag}><Text style={S.detailTagText}>🎨 {selectedPart.exteriorColor}</Text></View> : null}
+                  {selectedPart.city ? <View style={S.detailTag}><Text style={S.detailTagText}>📍 {selectedPart.city}{selectedPart.area ? ' : ' + selectedPart.area : ''}</Text></View> : null}
                   {selectedPart.condition ? <View style={S.detailTag}><Text style={S.detailTagText}>{CONDITION_LABELS[selectedPart.condition] || selectedPart.condition}</Text></View> : null}
                 </View>
                 {selectedPart.notes ? <Text style={S.detailNotes}>{selectedPart.notes}</Text> : null}
+                {Array.isArray(selectedPart.features) && selectedPart.features.length > 0 ? (
+                  <View style={S.detailRow}>
+                    {selectedPart.features.map((f, i) => (
+                      <View key={i} style={S.detailTag}><Text style={S.detailTagText}>✓ {f}</Text></View>
+                    ))}
+                  </View>
+                ) : null}
+                {selectedPart.lat != null && selectedPart.lng != null ? (
+                  <TouchableOpacity style={[S.callBtn, { backgroundColor: CT.navy, marginBottom: 14 }]} onPress={() => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${selectedPart.lat},${selectedPart.lng}`)}>
+                    <Ionicons name="location" size={18} color="#fff" />
+                    <Text style={S.callText}>شوف الموقع على الخريطة</Text>
+                  </TouchableOpacity>
+                ) : null}
                 {selectedPart.userName ? (
                   <TouchableOpacity style={S.sellerBox} onPress={() => openSellerPage(selectedPart)}>
                     <Ionicons name="chevron-back" size={18} color={CT.navy} />
@@ -1480,47 +1793,74 @@ export default function Index() {
             <View style={S.modalHandle} />
             <View style={S.modalHdr}>
               <TouchableOpacity onPress={() => { setEditingPartId(null); resetPostForm(); }}><Text style={S.resetText}>مسح</Text></TouchableOpacity>
-              <Text style={S.modalTitle}>{editingPartId ? 'تعديل الإعلان' : 'نشر قطعة غيار'}</Text>
+              <Text style={S.modalTitle}>{editingPartId ? 'تعديل الإعلان' : 'نشر إعلان'}</Text>
               <TouchableOpacity onPress={() => setShowPost(false)}><Ionicons name="close" size={22} color={CT.textSecondary} /></TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <Text style={S.label}>القسم *</Text>
+              <Text style={S.label}>نوع الإعلان *</Text>
               <View style={S.pillsRow}>
-                {CATEGORIES.map(cat => {
-                  const on = postCategory === cat.id;
-                  return (
-                    <TouchableOpacity key={cat.id} style={[S.pill, on && S.pillOn]} onPress={() => setPostCategory(cat.id)}>
-                      <Text style={[S.pillText, on && S.pillTextOn]}>{cat.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                <TouchableOpacity style={[S.pill, listingType === 'part' && S.pillOn]} onPress={() => { setListingType('part'); setSelectedBrand(null); setSelectedModel(null); setPostCategory(postCategory === 'vehicles' ? 'cars' : postCategory); }}>
+                  <Text style={[S.pillText, listingType === 'part' && S.pillTextOn]}>قطع غيار</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[S.pill, listingType === 'vehicle' && S.pillOn]} onPress={() => { setListingType('vehicle'); setSelectedBrand(null); setSelectedModel(null); }}>
+                  <Text style={[S.pillText, listingType === 'vehicle' && S.pillTextOn]}>مركبات</Text>
+                </TouchableOpacity>
               </View>
 
-              <Text style={S.label}>نوع القطعة *</Text>
-              <TouchableOpacity style={[S.dropTrigger, partTypeOpen && S.dropTriggerOpen]} onPress={() => { setPartTypeOpen(!partTypeOpen); setBrandOpen(false); setModelOpen(false); setPartQuery(''); }}>
-                <Ionicons name={partTypeOpen ? 'chevron-up' : 'chevron-down'} size={18} color={CT.textSecondary} />
-                <Text style={[S.dropText, !partType && S.dropPlaceholder]}>{partType || 'اختر نوع القطعة'}</Text>
-                <Ionicons name="construct-outline" size={18} color={CT.textSecondary} style={{ marginLeft: 8 }} />
-              </TouchableOpacity>
-              {partTypeOpen && (
-                <View style={S.dropList}>
-                  <TextInput style={S.dropSearch} placeholder="ابحث..." placeholderTextColor={CT.textMuted} value={partQuery} onChangeText={setPartQuery} />
-                  <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
-                    {filteredPartTypes.map(pt => (
-                      <TouchableOpacity key={pt} style={[S.dropItem, partType === pt && S.dropItemActive]} onPress={() => { setPartType(pt); setPartTypeOpen(false); setPartQuery(''); }}>
-                        {partType === pt && <Ionicons name="checkmark" size={16} color={CT.navy} />}
-                        <Text style={S.dropItemText}>{pt}</Text>
+              {listingType === 'vehicle' && (
+                <>
+                  <Text style={S.label}>نوع المركبة *</Text>
+                  <View style={S.pillsRow}>
+                    {[['car','سيارة'],['motorcycle','دراجة نارية'],['sportbike','دراجة رياضية'],['bicycle','دراجة هوائية'],['other','مركبة']].map(([id, lbl]) => (
+                      <TouchableOpacity key={id} style={[S.pill, vehicleType === id && S.pillOn]} onPress={() => { setVehicleType(id); setSelectedBrand(null); setSelectedModel(null); }}>
+                        <Text style={[S.pillText, vehicleType === id && S.pillTextOn]}>{lbl}</Text>
                       </TouchableOpacity>
                     ))}
-                    <TouchableOpacity style={[S.dropItem, partType === 'غير ذلك' && S.dropItemActive]} onPress={() => { setPartType('غير ذلك'); setPartTypeOpen(false); setPartQuery(''); }}>
-                      {partType === 'غير ذلك' && <Ionicons name="checkmark" size={16} color={CT.navy} />}
-                      <Text style={[S.dropItemText, { fontWeight: '700', color: CT.navy }]}>✏️ غير ذلك (اكتب القطعة)</Text>
-                    </TouchableOpacity>
-                  </ScrollView>
-                </View>
+                  </View>
+                </>
               )}
-              {partType === 'غير ذلك' && (
-                <TextInput style={[S.input, { marginTop: 8 }]} placeholder="اكتب اسم القطعة..." placeholderTextColor={CT.textMuted} value={customPartType} onChangeText={setCustomPartType} />
+
+              {listingType === 'part' && (
+                <>
+                  <Text style={S.label}>القسم *</Text>
+                  <View style={S.pillsRow}>
+                    {CATEGORIES.filter(cat => cat.id !== 'vehicles').map(cat => {
+                      const on = postCategory === cat.id;
+                      return (
+                        <TouchableOpacity key={cat.id} style={[S.pill, on && S.pillOn]} onPress={() => setPostCategory(cat.id)}>
+                          <Text style={[S.pillText, on && S.pillTextOn]}>{cat.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={S.label}>نوع القطعة *</Text>
+                  <TouchableOpacity style={[S.dropTrigger, partTypeOpen && S.dropTriggerOpen]} onPress={() => { setPartTypeOpen(!partTypeOpen); setBrandOpen(false); setModelOpen(false); setPartQuery(''); }}>
+                    <Ionicons name={partTypeOpen ? 'chevron-up' : 'chevron-down'} size={18} color={CT.textSecondary} />
+                    <Text style={[S.dropText, !partType && S.dropPlaceholder]}>{partType || 'اختر نوع القطعة'}</Text>
+                    <Ionicons name="construct-outline" size={18} color={CT.textSecondary} style={{ marginLeft: 8 }} />
+                  </TouchableOpacity>
+                  {partTypeOpen && (
+                    <View style={S.dropList}>
+                      <TextInput style={S.dropSearch} placeholder="ابحث..." placeholderTextColor={CT.textMuted} value={partQuery} onChangeText={setPartQuery} />
+                      <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                        {filteredPartTypes.map(pt => (
+                          <TouchableOpacity key={pt} style={[S.dropItem, partType === pt && S.dropItemActive]} onPress={() => { setPartType(pt); setPartTypeOpen(false); setPartQuery(''); }}>
+                            {partType === pt && <Ionicons name="checkmark" size={16} color={CT.navy} />}
+                            <Text style={S.dropItemText}>{pt}</Text>
+                          </TouchableOpacity>
+                        ))}
+                        <TouchableOpacity style={[S.dropItem, partType === 'غير ذلك' && S.dropItemActive]} onPress={() => { setPartType('غير ذلك'); setPartTypeOpen(false); setPartQuery(''); }}>
+                          {partType === 'غير ذلك' && <Ionicons name="checkmark" size={16} color={CT.navy} />}
+                          <Text style={[S.dropItemText, { fontWeight: '700', color: CT.navy }]}>✏️ غير ذلك (اكتب القطعة)</Text>
+                        </TouchableOpacity>
+                      </ScrollView>
+                    </View>
+                  )}
+                  {partType === 'غير ذلك' && (
+                    <TextInput style={[S.input, { marginTop: 8 }]} placeholder="اكتب اسم القطعة..." placeholderTextColor={CT.textMuted} value={customPartType} onChangeText={setCustomPartType} />
+                  )}
+                </>
               )}
 
               <Text style={S.label}>الشركة *</Text>
@@ -1544,20 +1884,21 @@ export default function Index() {
               )}
 
               <Text style={S.label}>الموديل</Text>
-              <TouchableOpacity style={[S.dropTrigger, modelOpen && S.dropTriggerOpen, !selectedBrand && S.dropTriggerDisabled]} onPress={() => { if (!selectedBrand) return; setModelOpen(!modelOpen); setPartTypeOpen(false); setBrandOpen(false); }} disabled={!selectedBrand}>
+              <TouchableOpacity style={[S.dropTrigger, modelOpen && S.dropTriggerOpen, !selectedBrand && S.dropTriggerDisabled]} onPress={() => { if (!selectedBrand) return; setModelOpen(!modelOpen); setPartTypeOpen(false); setBrandOpen(false); setModelQuery(''); }} disabled={!selectedBrand}>
                 <Ionicons name={modelOpen ? 'chevron-up' : 'chevron-down'} size={18} color={CT.textSecondary} />
                 <Text style={[S.dropText, !selectedModel && S.dropPlaceholder]}>{selectedModel || (selectedBrand ? 'اختر الموديل' : 'اختر الشركة أولاً')}</Text>
                 <Ionicons name="speedometer-outline" size={18} color={CT.textSecondary} style={{ marginLeft: 8 }} />
               </TouchableOpacity>
               {modelOpen && selectedBrand && (
                 <View style={S.dropList}>
-                  <ScrollView nestedScrollEnabled>
-                    <TouchableOpacity style={[S.dropItem, !selectedModel && S.dropItemActive]} onPress={() => { setSelectedModel(null); setModelOpen(false); }}>
+                  <TextInput style={S.dropSearch} placeholder="ابحث في الموديلات..." placeholderTextColor={CT.textMuted} value={modelQuery} onChangeText={setModelQuery} />
+                  <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                    <TouchableOpacity style={[S.dropItem, !selectedModel && S.dropItemActive]} onPress={() => { setSelectedModel(null); setModelOpen(false); setModelQuery(''); }}>
                       {!selectedModel && <Ionicons name="checkmark" size={16} color={CT.navy} />}
                       <Text style={S.dropItemText}>كل الموديلات</Text>
                     </TouchableOpacity>
-                    {models.map(m => (
-                      <TouchableOpacity key={m} style={[S.dropItem, selectedModel === m && S.dropItemActive]} onPress={() => { setSelectedModel(m); setModelOpen(false); }}>
+                    {filteredModels.map(m => (
+                      <TouchableOpacity key={m} style={[S.dropItem, selectedModel === m && S.dropItemActive]} onPress={() => { setSelectedModel(m); setModelOpen(false); setModelQuery(''); }}>
                         {selectedModel === m && <Ionicons name="checkmark" size={16} color={CT.navy} />}
                         <Text style={S.dropItemText}>{m}</Text>
                       </TouchableOpacity>
@@ -1566,8 +1907,133 @@ export default function Index() {
                 </View>
               )}
 
-              <Text style={S.label}>سنة السيارة (اختياري)</Text>
+              <Text style={S.label}>{listingType === 'vehicle' ? 'سنة الصنع *' : 'سنة الصنع (اختياري)'}</Text>
               <TextInput style={S.input} placeholder="مثال: 2015" placeholderTextColor={CT.textMuted} value={carYear} onChangeText={setCarYear} keyboardType="numeric" />
+
+              {listingType === 'vehicle' && (
+                <>
+                  {vehicleType !== 'bicycle' && (
+                    <>
+                      <Text style={S.label}>الممشى / الكيلومترات *</Text>
+                      <TextInput style={S.input} placeholder="مثال: 120000" placeholderTextColor={CT.textMuted} value={vehKm} onChangeText={setVehKm} keyboardType="numeric" />
+                    </>
+                  )}
+
+                  {vehicleType === 'car' ? (
+                    <>
+                      <Text style={S.label}>ناقل الحركة</Text>
+                      <View style={S.pillsRow}>
+                        <TouchableOpacity style={[S.pill, vehTransmission === 'auto' && S.pillOn]} onPress={() => setVehTransmission('auto')}>
+                          <Text style={[S.pillText, vehTransmission === 'auto' && S.pillTextOn]}>أوتوماتيك</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[S.pill, vehTransmission === 'manual' && S.pillOn]} onPress={() => setVehTransmission('manual')}>
+                          <Text style={[S.pillText, vehTransmission === 'manual' && S.pillTextOn]}>عادي (مانيوال)</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <Text style={S.label}>نوع الوقود</Text>
+                      <View style={S.pillsRow}>
+                        {[['petrol','بنزين'],['diesel','ديزل'],['hybrid','هايبرد'],['electric','كهرباء']].map(([id, lbl]) => (
+                          <TouchableOpacity key={id} style={[S.pill, vehFuel === id && S.pillOn]} onPress={() => setVehFuel(id)}>
+                            <Text style={[S.pillText, vehFuel === id && S.pillTextOn]}>{lbl}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+
+                      <Text style={S.label}>المواصفات</Text>
+                      <View style={S.pillsRow}>
+                        <TouchableOpacity style={[S.pill, vehSpec === 'gulf' && S.pillOn]} onPress={() => setVehSpec('gulf')}>
+                          <Text style={[S.pillText, vehSpec === 'gulf' && S.pillTextOn]}>خليجي</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[S.pill, vehSpec === 'imported' && S.pillOn]} onPress={() => setVehSpec('imported')}>
+                          <Text style={[S.pillText, vehSpec === 'imported' && S.pillTextOn]}>وارد</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <Text style={S.label}>نوع الهيكل (اختياري)</Text>
+                      <View style={S.pillsRow}>
+                        {BODY_TYPES.map(b => (
+                          <TouchableOpacity key={b} style={[S.pill, vehBody === b && S.pillOn]} onPress={() => setVehBody(vehBody === b ? '' : b)}>
+                            <Text style={[S.pillText, vehBody === b && S.pillTextOn]}>{b}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+
+                      <Text style={S.label}>عدد السلندرات (اختياري)</Text>
+                      <View style={S.pillsRow}>
+                        {['3','4','5','6','8','10','12'].map(c => (
+                          <TouchableOpacity key={c} style={[S.pill, vehCylinders === c && S.pillOn]} onPress={() => setVehCylinders(vehCylinders === c ? '' : c)}>
+                            <Text style={[S.pillText, vehCylinders === c && S.pillTextOn]}>{c}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+
+                      <Text style={S.label}>اللون (اختياري)</Text>
+                      <View style={S.pillsRow}>
+                        {CAR_COLORS.map(c => (
+                          <TouchableOpacity key={c} style={[S.pill, vehColor === c && S.pillOn]} onPress={() => setVehColor(vehColor === c ? '' : c)}>
+                            <Text style={[S.pillText, vehColor === c && S.pillTextOn]}>{c}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+
+                      <Text style={S.label}>المميزات (اختياري — اختر ما ينطبق)</Text>
+                      <View style={S.pillsRow}>
+                        {CAR_FEATURES.map(f => {
+                          const on = vehFeatures.includes(f);
+                          return (
+                            <TouchableOpacity key={f} style={[S.pill, on && S.pillOn]} onPress={() => setVehFeatures(on ? vehFeatures.filter(x => x !== f) : [...vehFeatures, f])}>
+                              <Text style={[S.pillText, on && S.pillTextOn]}>{on ? '✓ ' : ''}{f}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+
+                      <Text style={S.label}>مميزات أخرى</Text>
+                      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                        <TouchableOpacity
+                          style={[S.adminAddBtn, { opacity: customFeature.trim() ? 1 : 0.5 }]}
+                          disabled={!customFeature.trim()}
+                          onPress={() => {
+                            const f = customFeature.trim();
+                            if (f && !vehFeatures.includes(f)) setVehFeatures([...vehFeatures, f]);
+                            setCustomFeature('');
+                          }}>
+                          <Text style={S.adminAddBtnText}>أضف</Text>
+                        </TouchableOpacity>
+                        <TextInput
+                          style={[S.input, { flex: 1, marginBottom: 0 }]}
+                          placeholder="اكتب ميزة ثم اضغط أضف"
+                          placeholderTextColor={CT.textMuted}
+                          value={customFeature}
+                          onChangeText={setCustomFeature}
+                          returnKeyType="done"
+                          onSubmitEditing={() => {
+                            const f = customFeature.trim();
+                            if (f && !vehFeatures.includes(f)) setVehFeatures([...vehFeatures, f]);
+                            setCustomFeature('');
+                          }}
+                        />
+                      </View>
+                      {vehFeatures.filter(f => !CAR_FEATURES.includes(f)).length > 0 && (
+                        <View style={[S.pillsRow, { marginTop: 8 }]}>
+                          {vehFeatures.filter(f => !CAR_FEATURES.includes(f)).map(f => (
+                            <TouchableOpacity key={f} style={[S.pill, S.pillOn, { flexDirection: 'row', alignItems: 'center', gap: 6 }]} onPress={() => setVehFeatures(vehFeatures.filter(x => x !== f))}>
+                              <Text style={[S.pillText, S.pillTextOn]}>{f}</Text>
+                              <Ionicons name="close" size={14} color="#fff" />
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
+                    </>
+                  ) : (vehicleType === 'motorcycle' || vehicleType === 'sportbike') ? (
+                    <>
+                      <Text style={S.label}>سعة المحرك CC (اختياري)</Text>
+                      <TextInput style={S.input} placeholder="مثال: 600" placeholderTextColor={CT.textMuted} value={vehEngineCc} onChangeText={setVehEngineCc} keyboardType="numeric" />
+                    </>
+                  ) : null}
+                </>
+              )}
 
               <Text style={S.label}>الحالة</Text>
               <View style={S.pillsRow}>
@@ -1580,27 +2046,37 @@ export default function Index() {
               <Text style={S.label}>السعر (درهم) *</Text>
               <TextInput style={S.input} placeholder="مثال: 300" placeholderTextColor={CT.textMuted} value={price} onChangeText={setPrice} keyboardType="numeric" />
 
-              <Text style={S.label}>المدينة</Text>
-              <View style={S.pillsRow}>
-                {cities.filter(c => c !== 'الكل' && c !== 'All').map(c => {
-                  const on = postCity === c;
-                  return (<TouchableOpacity key={c} style={[S.pill, on && S.pillOn]} onPress={() => setPostCity(c)}><Text style={[S.pillText, on && S.pillTextOn]}>{c}</Text></TouchableOpacity>);
-                })}
-              </View>
+              
 
               <Text style={S.label}>رقم الجوال *</Text>
               <TextInput style={S.input} placeholder="05x xxx xxxx" placeholderTextColor={CT.textMuted} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+              <TouchableOpacity style={[S.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: pickedLat !== null ? CT.activeGreen : CT.navyDark }]} onPress={openMapPicker} disabled={gettingLocation}>
+                {gettingLocation ? <ActivityIndicator color="#fff" /> : (
+                  <>
+                    <Ionicons name={pickedLat !== null ? 'checkmark-circle' : 'location'} size={20} color="#fff" />
+                    <Text style={{ color: '#fff', fontWeight: 'bold', marginRight: 8 }}>{pickedLat !== null ? 'تم تحديد الموقع · اضغط للتعديل' : 'حدد موقع القطعة على الخريطة'}</Text>
+                  </>
+                )}
+              </TouchableOpacity>
 
-              <Text style={S.label}>ملاحظات (اختياري)</Text>
-              <TextInput style={[S.input, { height: 90, textAlignVertical: 'top', paddingTop: 12 }]} placeholder="تفاصيل إضافية..." placeholderTextColor={CT.textMuted} value={notes} onChangeText={setNotes} multiline />
+              <Text style={S.label}>الحي / المنطقة (اختياري)</Text>
+              <TextInput style={S.input} placeholder="مثال: جميرا 1" placeholderTextColor={CT.textMuted} value={pickedArea} onChangeText={setPickedArea} />
 
-              <Text style={S.label}>صور القطعة * (حتى {MAX_IMAGES})</Text>
+              <Text style={S.label}>الوصف (اختياري)</Text>
+              <TextInput style={[S.input, { height: 90, textAlignVertical: 'top', paddingTop: 12 }]} placeholder="اوصف المركبة أو الإعلان..." placeholderTextColor={CT.textMuted} value={notes} onChangeText={setNotes} multiline />
+
+              <Text style={S.label}>{listingType === 'vehicle' ? 'صور المركبة' : 'صور القطعة'} * (حتى {MAX_IMAGES}) — اضغط صورة لجعلها الغلاف</Text>
               <View style={S.imagesRow}>
                 {images.map((img, idx) => (
-                  <View key={idx} style={S.imgThumb}>
+                  <TouchableOpacity key={idx} style={S.imgThumb} activeOpacity={0.8} onPress={() => setCoverImage(idx)}>
                     <Image source={{ uri: img }} style={S.imgThumbImg} />
+                    {idx === 0 && (
+                      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: CT.navyDark, paddingVertical: 2 }}>
+                        <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700', textAlign: 'center' }}>الغلاف</Text>
+                      </View>
+                    )}
                     <TouchableOpacity style={S.imgRemove} onPress={() => removeImage(idx)}><Ionicons name="close" size={14} color="#fff" /></TouchableOpacity>
-                  </View>
+                  </TouchableOpacity>
                 ))}
                 {images.length < MAX_IMAGES && (
                   <TouchableOpacity style={S.imgAdd} onPress={pickImage} disabled={pickingImage}>
@@ -1610,12 +2086,56 @@ export default function Index() {
               </View>
 
               <TouchableOpacity style={S.submitBtn} onPress={submitPart} disabled={saving}>
-                {saving ? <ActivityIndicator color="#fff" /> : <Text style={S.submitText}>إرسال القطعة 🚀</Text>}
+                {saving ? <ActivityIndicator color="#fff" /> : <Text style={S.submitText}>{listingType === 'vehicle' ? 'إرسال المركبة' : 'إرسال القطعة'}</Text>}
               </TouchableOpacity>
             </ScrollView>
           </View>
+
+              
+
+          {showMapPicker && (
+            <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: '#000' }}>
+              {pickedLat !== null && (
+                <MapView
+                  provider={PROVIDER_GOOGLE}
+                  style={{ flex: 1 }}
+                  initialRegion={{ latitude: pickedLat, longitude: pickedLng, latitudeDelta: 0.05, longitudeDelta: 0.05 }}
+                  onRegionChangeComplete={(r) => { setPickedLat(r.latitude); setPickedLng(r.longitude); }}
+                />
+              )}
+              <View pointerEvents="none" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="location" size={48} color="#E11D2A" style={{ marginBottom: 48 }} />
+              </View>
+              <View pointerEvents="none" style={{ position: 'absolute', top: insets.top + 20, left: 0, right: 0, alignItems: 'center' }}>
+                <View style={{ backgroundColor: 'rgba(0,0,0,0.7)', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20 }}>
+                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>حرّك الخريطة لوضع الدبوس على الموقع</Text>
+                </View>
+              </View>
+              <View style={{ position: 'absolute', bottom: insets.bottom + 30, left: 20, right: 20, flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity style={{ flex: 1, backgroundColor: '#fff', padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={() => { setPickedLat(null); setPickedLng(null); setShowMapPicker(false); }}>
+                  <Text style={{ color: '#E11D2A', fontWeight: 'bold' }}>إلغاء</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={{ flex: 2, backgroundColor: CT.activeGreen, padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={async () => {
+                  try {
+                    const res = await Location.reverseGeocodeAsync({ latitude: pickedLat, longitude: pickedLng });
+                    const a = res && res[0];
+                    if (a) {
+                      const emirate = normalizeEmirate(a);
+                      if (emirate) setPostCity(emirate);
+                      setPickedArea(a.district || a.subregion || a.name || a.street || '');
+                    }
+                  } catch (e) {}
+                  setShowMapPicker(false);
+                }}>
+                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>تأكيد الموقع</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
       </Modal>
+
+      
 
       <Modal visible={showReturnModal} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setShowReturnModal(false)}>
         <View style={[S.modalOverlay, { justifyContent: 'center', padding: 24 }]}>
@@ -1677,6 +2197,97 @@ export default function Index() {
               <TouchableOpacity style={S.submitBtn} onPress={saveMyProfile} disabled={savingProfile}>
                 {savingProfile ? <ActivityIndicator color="#fff" /> : <Text style={S.submitText}>حفظ ✅</Text>}
               </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showAdvSearch} animationType="slide" transparent statusBarTranslucent onRequestClose={() => setShowAdvSearch(false)}>
+        <View style={S.modalOverlay}>
+          <View style={S.modalBox}>
+            <View style={S.modalHandle} />
+            <View style={S.modalHdr}>
+              <TouchableOpacity onPress={resetAdvFilters}><Text style={S.resetText}>مسح الفلاتر</Text></TouchableOpacity>
+              <Text style={S.modalTitle}>بحث متقدم</Text>
+              <TouchableOpacity onPress={() => setShowAdvSearch(false)}><Ionicons name="close" size={22} color={CT.textSecondary} /></TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <Text style={S.label}>كلمة البحث (شركة / موديل / اسم)</Text>
+              <TextInput style={S.input} placeholder="مثال: باترول، تويوتا، مساعد" placeholderTextColor={CT.textMuted} value={search} onChangeText={setSearch} />
+
+              <Text style={S.label}>النوع</Text>
+              <View style={S.pillsRow}>
+                {[['all','الكل'],['vehicle','مركبات'],['part','قطع غيار']].map(([id, lbl]) => (
+                  <TouchableOpacity key={id} style={[S.pill, advType === id && S.pillOn]} onPress={() => setAdvType(id)}>
+                    <Text style={[S.pillText, advType === id && S.pillTextOn]}>{lbl}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={S.label}>السعر (درهم)</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput style={S.advField} placeholder="من" placeholderTextColor={CT.textMuted} value={advPriceMin} onChangeText={setAdvPriceMin} keyboardType="numeric" />
+                <TextInput style={S.advField} placeholder="إلى" placeholderTextColor={CT.textMuted} value={advPriceMax} onChangeText={setAdvPriceMax} keyboardType="numeric" />
+              </View>
+
+              <Text style={S.label}>سنة الصنع</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput style={S.advField} placeholder="من" placeholderTextColor={CT.textMuted} value={advYearMin} onChangeText={setAdvYearMin} keyboardType="numeric" />
+                <TextInput style={S.advField} placeholder="إلى" placeholderTextColor={CT.textMuted} value={advYearMax} onChangeText={setAdvYearMax} keyboardType="numeric" />
+              </View>
+
+              <Text style={S.label}>الحالة</Text>
+              <View style={S.pillsRow}>
+                <TouchableOpacity style={[S.pill, advCondition === '' && S.pillOn]} onPress={() => setAdvCondition('')}>
+                  <Text style={[S.pillText, advCondition === '' && S.pillTextOn]}>الكل</Text>
+                </TouchableOpacity>
+                {CONDITIONS.map(c => (
+                  <TouchableOpacity key={c.id} style={[S.pill, advCondition === c.id && S.pillOn]} onPress={() => setAdvCondition(c.id)}>
+                    <Text style={[S.pillText, advCondition === c.id && S.pillTextOn]}>{c.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={S.label}>المدينة</Text>
+              <View style={S.pillsRow}>
+                {cities.map(c => {
+                  const on = advCity === c || (c === cities[0] && !advCity);
+                  return (
+                    <TouchableOpacity key={c} style={[S.pill, on && S.pillOn]} onPress={() => setAdvCity(c === cities[0] ? '' : c)}>
+                      <Text style={[S.pillText, on && S.pillTextOn]}>{c}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text style={S.label}>الترتيب</Text>
+              <View style={S.pillsRow}>
+                {[['newest','الأحدث'],['price_asc','الأقل سعرًا'],['price_desc','الأعلى سعرًا']].map(([id, lbl]) => (
+                  <TouchableOpacity key={id} style={[S.pill, advSort === id && S.pillOn]} onPress={() => setAdvSort(id)}>
+                    <Text style={[S.pillText, advSort === id && S.pillTextOn]}>{lbl}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TouchableOpacity style={S.submitBtn} onPress={() => { setSelectedCategory(null); setSearchResultsMode(true); setShowAdvSearch(false); }}>
+                <Text style={S.submitText}>عرض النتائج ({advFilteredParts.length})</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showTerms} animationType="slide" transparent statusBarTranslucent onRequestClose={() => setShowTerms(false)}>
+        <View style={S.modalOverlay}>
+          <View style={S.modalBox}>
+            <View style={S.modalHandle} />
+            <View style={S.modalHdr}>
+              <View style={{ width: 24 }} />
+              <Text style={S.modalTitle}>الشروط والأحكام</Text>
+              <TouchableOpacity onPress={() => setShowTerms(false)}><Ionicons name="close" size={22} color={CT.textSecondary} /></TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
+              <Text style={{ color: CT.textSecondary, fontSize: 13, lineHeight: 24, textAlign: 'right' }}>{TERMS_TEXT}</Text>
             </ScrollView>
           </View>
         </View>
